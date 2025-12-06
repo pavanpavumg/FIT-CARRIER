@@ -1,0 +1,144 @@
+{
+  "info": {
+    "name": "AI Fitness Coach API",
+    "description": "API collection for AI Fitness Coach application",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Create/Get User",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/x-www-form-urlencoded"
+          }
+        ],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "username",
+              "value": "testuser",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/users",
+          "host": ["{{base_url}}"],
+          "path": ["api", "users"]
+        },
+        "description": "Create a new user or get existing user token. Idempotent - posting same username returns existing token."
+      },
+      "response": []
+    },
+    {
+      "name": "Get History",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-KEY",
+            "value": "{{api_key}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/history",
+          "host": ["{{base_url}}"],
+          "path": ["api", "history"]
+        },
+        "description": "Get measurement history for authenticated user. Requires X-API-KEY header."
+      },
+      "response": []
+    },
+    {
+      "name": "Upload Image",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-API-KEY",
+            "value": "{{api_key}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": []
+            },
+            {
+              "key": "use_height",
+              "value": "false",
+              "type": "text"
+            },
+            {
+              "key": "height_cm",
+              "value": "",
+              "type": "text",
+              "disabled": true
+            },
+            {
+              "key": "use_segmentation",
+              "value": "false",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/upload",
+          "host": ["{{base_url}}"],
+          "path": ["api", "upload"]
+        },
+        "description": "Upload an image for waist measurement analysis. Requires X-API-KEY header."
+      },
+      "response": []
+    },
+    {
+      "name": "Delete History Item",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "X-API-KEY",
+            "value": "{{api_key}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/history/:id",
+          "host": ["{{base_url}}"],
+          "path": ["api", "history", ":id"],
+          "variable": [
+            {
+              "key": "id",
+              "value": "1",
+              "description": "History record ID to delete"
+            }
+          ]
+        },
+        "description": "Delete a specific history record. Requires X-API-KEY header."
+      },
+      "response": []
+    }
+  ]
+}
+

@@ -1,0 +1,9 @@
+flask
+flask-jwt-extended
+werkzeug
+jinja2
+python-multipart
+opencv-python
+numpy
+pytest
+

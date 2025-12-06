@@ -1,0 +1,532 @@
+/* Cyberpunk Animated CSS — non-3D version */
+
+/* -------- CONFIG / VARIABLES -------- */
+:root{
+  --bg-dark-1: #10107f;    /* almost black */
+  --bg-dark-2: #121273;    /* deep graphite */
+  --neon-cyan: #00f6ff;
+  --neon-purple: #a64ff8;
+  --muted-text: #95a5a6;
+  --card-bg: rgba(74, 74, 210, 0.66);
+    /* If you want an ambient image, place a raster image (png/jpg/svg) inside `static/`
+      and set this to `url("/static/your-image.png")`. Using `file://` is blocked by browsers. */
+    --asset-url: none;
+}
+
+/* -------- Base page + animated ambient background -------- */
+html, body {
+  height: 100%;
+  margin: 0;
+  font-family: "Segoe UI", Roboto, Arial, sans-serif;
+  background: linear-gradient(120deg, var(--bg-dark-1), var(--bg-dark-2));
+  color: #1e87b8;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* faint neon blobs + asset overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -20%;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 12% 20%, rgba(9, 109, 91, 0.045), transparent 6%),
+    radial-gradient(circle at 82% 78%, rgba(111, 31, 186, 0.04), transparent 8%),
+    linear-gradient(90deg, rgba(165, 25, 25, 0.002), rgba(139, 10, 10, 0.001)),
+    var(--asset-url);
+  background-repeat: no-repeat;
+  background-position: 85% 10%;
+  background-size: 34%;
+  filter: blur(22px) saturate(1.1) contrast(.95);
+  opacity: 0.75;
+  mix-blend-mode: screen;
+  animation: ambientShift 30s linear infinite;
+}
+
+@keyframes ambientShift {
+  0%   { transform: translate(0px,0px) scale(1); opacity:0.9; }
+  50%  { transform: translate(-8px,6px) scale(1.02); opacity:1; }
+  100% { transform: translate(0px,0px) scale(1); opacity:0.9; }
+}
+
+/* subtle sliding highlight */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  background: linear-gradient(90deg, rgba(78, 51, 135, 0.002), rgba(255,255,255,0.0008));
+  pointer-events: none;
+}
+
+/* -------- Card base -------- */
+.card {
+  background: linear-gradient(180deg, rgba(160, 24, 24, 0.015), rgba(255,255,255,0.008));
+  border: 1px solid rgba(255,255,255,0.03);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+}
+
+/* -------- Neon video border (breathing + color cycle) -------- */
+.neon-video {
+  position: relative;
+  display: inline-block;
+  border-radius: 14px;
+  padding: 6px;            /* room for glow */
+  background: rgba(255,255,255,0.01);
+  transition: transform 180ms ease;
+  overflow: visible;
+}
+
+/* video / canvas inside wrapper */
+.neon-video > video,
+.neon-video > canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  background: #1a508e;
+  position: relative;
+  z-index: 3;
+  box-shadow: inset 0 1px 0 rgba(21, 75, 160, 0.532);
+}
+
+/* big soft neon glow layer (cycles colors) */
+.neon-video::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: 14px;
+  background: conic-gradient(from 120deg, var(--neon-cyan), var(--neon-purple), var(--neon-cyan));
+  filter: blur(18px) saturate(1.3);
+  opacity: 0.78;
+  mix-blend-mode: screen;
+  transform: scale(1.02);
+  pointer-events: none;
+  animation: neonColorRotate 6s linear infinite, neonBreath 3.6s ease-in-out infinite;
+}
+
+/* thin, sharper inner rim */
+.neon-video::after {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  z-index: 4;
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgba(0,246,255,0.18), rgba(166,79,248,0.16));
+  filter: blur(2px);
+  pointer-events: none;
+  animation: neonRimPulse 3.6s ease-in-out infinite;
+}
+
+@keyframes neonColorRotate {
+  0%   { transform: scale(1.02) rotate(0deg); }
+  50%  { transform: scale(1.03) rotate(180deg); }
+  100% { transform: scale(1.02) rotate(360deg); }
+}
+
+@keyframes neonBreath {
+  0%   { opacity: 0.45; filter: blur(22px) saturate(1); transform: scale(1.01); }
+  40%  { opacity: 0.95; filter: blur(10px) saturate(1.6) contrast(1.02); transform: scale(1.03); }
+  70%  { opacity: 0.7; filter: blur(16px) saturate(1.2); transform: scale(1.02); }
+  100% { opacity: 0.45; filter: blur(22px) saturate(1); transform: scale(1.01); }
+}
+
+@keyframes neonRimPulse {
+  0% { opacity: 0.28; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.01); }
+  100% { opacity: 0.28; transform: scale(1); }
+}
+
+/* optional active class to briefly intensify the glow (use JS to toggle) */
+.neon-video.active::before {
+  animation-duration: 2s, 1.2s;
+  opacity: 1;
+}
+
+/* -------- Metric cards (hover lift + shadow intensify) -------- */
+.metrics-row {
+  display:flex;
+  gap: 14px;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.metric-card {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 16px;
+  min-width: 150px;
+  transition: transform 260ms cubic-bezier(.2,.9,.3,1), box-shadow 260ms ease, border-color 260ms ease;
+  box-shadow: 0 10px 30px rgba(155, 12, 12, 0.55);
+  border: 1px solid rgba(49, 23, 101, 0.724);
+  position: relative;
+  cursor: default;
+  overflow: hidden;
+}
+
+/* neon accent vertical bar */
+.metric-card::before{
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, var(--neon-cyan), var(--neon-purple));
+  opacity: 0.9;
+  filter: blur(1px);
+  transform-origin: left center;
+  transition: transform 260ms ease, opacity 260ms ease;
+}
+
+/* hover effects: lift and intensify shadow + neon rim */
+.metric-card:hover {
+  transform: translateY(-10px) scale(1.02);
+  box-shadow: 0 26px 72px rgba(111, 12, 12, 0.75), 0 0 34px rgba(0,246,255,0.06);
+  border-color: rgba(0,246,255,0.12);
+}
+.metric-card:hover::before {
+  transform: scaleY(1.06);
+  opacity: 1;
+}
+
+/* content styles */
+.metric-value {
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: #e6feff;
+  letter-spacing: -0.5px;
+}
+.metric-label {
+  font-size: 0.82rem;
+  color: var(--muted-text);
+  margin-top: 6px;
+}
+
+/* subtle scanline on metric (moving) */
+.metric-card::after {
+  content: "";
+  position: absolute;
+  left: -30%;
+  top: 0;
+  width: 30%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent);
+  transform: skewX(-18deg);
+  pointer-events: none;
+  animation: scan 6s linear infinite;
+  mix-blend-mode: overlay;
+  opacity: 0.5;
+}
+@keyframes scan {
+  0% { left: -40%; }
+  100% { left: 120%; }
+}
+
+/* -------- Utilities / responsive -------- */
+.btn-ghost {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.06);
+  color: #bfefff;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+.cyber-btn {
+  background: linear-gradient(120deg, rgba(0, 246, 255, 0.12), rgba(166, 79, 248, 0.18));
+  border: 1px solid rgba(0, 246, 255, 0.35);
+  color: #e0ffff;
+  padding: 10px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 20px rgba(0, 246, 255, 0.18);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cyber-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 28px rgba(0, 246, 255, 0.35);
+}
+
+.cyber-btn:active {
+  transform: translateY(0);
+}
+
+.token-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.token-wrapper input {
+  flex: 0 0 auto;
+}
+
+.token-clear-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.token-clear-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.05);
+}
+
+.token-clear-btn:active {
+  transform: scale(0.95);
+}
+
+.search-panel {
+  margin-bottom: 20px;
+}
+
+.search-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.tutorial-search-input {
+  flex: 1;
+  min-width: 240px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 246, 255, 0.35);
+  background: rgba(7, 10, 30, 0.85);
+  color: #dff8ff;
+  font-size: 1rem;
+  box-shadow: 0 0 18px rgba(0, 246, 255, 0.15);
+}
+
+.tutorial-search-input::placeholder {
+  color: rgba(223, 248, 255, 0.6);
+}
+
+.search-hint {
+  margin-top: 10px;
+  color: var(--muted-text);
+  font-size: 0.88rem;
+}
+
+/* -------- Holographic Workout Cards -------- */
+.holo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.holo-card {
+  position: relative;
+  padding: 18px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(0, 255, 255, 0.08), rgba(102, 51, 153, 0.12));
+  border: 1px solid rgba(0, 255, 255, 0.25);
+  box-shadow: 0 0 25px rgba(0, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  overflow: hidden;
+}
+
+.holo-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(0, 246, 255, 0.1), rgba(166, 79, 248, 0.1));
+  border-radius: 14px;
+  pointer-events: none;
+  animation: holoPulse 3s ease-in-out infinite;
+}
+
+.holo-card::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.05), transparent);
+  transform: rotate(45deg);
+  animation: holoScan 4s linear infinite;
+  pointer-events: none;
+}
+
+.holo-card:hover {
+  transform: translateY(-6px) scale(1.01);
+  box-shadow: 0 0 35px rgba(0, 255, 255, 0.3), 0 8px 32px rgba(0, 0, 0, 0.4);
+  border-color: rgba(0, 255, 255, 0.4);
+}
+
+.holo-card h4 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+  color: #e8f7ff;
+  letter-spacing: 0.5px;
+  position: relative;
+  z-index: 1;
+}
+
+.holo-card .tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 255, 255, 0.18);
+  border: 1px solid rgba(0, 255, 255, 0.35);
+  color: #8deaff;
+  letter-spacing: 0.1em;
+  margin-top: 8px;
+  position: relative;
+  z-index: 1;
+}
+
+.holo-card p {
+  margin: 10px 0 0 0;
+  color: #9fddee;
+  font-size: 0.85rem;
+  position: relative;
+  z-index: 1;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 9, 20, 0.85);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(6px);
+}
+
+.modal.show {
+  display: flex;
+}
+
+.modal-content {
+  background: linear-gradient(160deg, rgba(0, 246, 255, 0.08), rgba(166, 79, 248, 0.12));
+  border: 1px solid rgba(0, 246, 255, 0.25);
+  border-radius: 16px;
+  padding: 20px;
+  width: min(420px, 90%);
+  color: #dff8ff;
+  box-shadow: 0 0 30px rgba(0, 246, 255, 0.2);
+  position: relative;
+}
+
+.modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+#tutorialModal {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 7, 18, 0.82);
+  backdrop-filter: blur(10px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+#tutorialModal.show {
+  display: flex;
+}
+
+.tutorial-content {
+  width: min(600px, 90%);
+  padding: 24px;
+  border-radius: 18px;
+  border: 1px solid rgba(0, 246, 255, 0.35);
+  background: rgba(13, 18, 36, 0.85);
+  box-shadow: 0 0 45px rgba(0, 246, 255, 0.25);
+  position: relative;
+  text-align: center;
+}
+
+.tutorial-content iframe {
+  width: 100%;
+  height: 320px;
+  border-radius: 12px;
+  margin: 16px 0;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+#tutorialModal {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 7, 18, 0.82);
+  backdrop-filter: blur(10px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+#tutorialModal.show {
+  display: flex;
+}
+
+/* tutorial modal removed */
+
+#modalWorkoutList {
+  list-style: none;
+  padding-left: 0;
+  margin: 16px 0 0 0;
+}
+
+#modalWorkoutList li {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.95rem;
+}
+
+#modalWorkoutList li:last-child {
+  border-bottom: none;
+}
+
+@keyframes holoPulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes holoScan {
+  0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+  100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+}
+
+@media (max-width: 900px) {
+  .metrics-row { flex-direction: column; }
+  .neon-video { width: 100%; }
+  .holo-grid { grid-template-columns: 1fr; }
+}

@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PhysioAI Coach — Professional Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Poppins:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js"
+    crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils@0.6.1675466023/control_utils.js"
+    crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.js"
+    crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js" crossorigin="anonymous"
+    onload="window.mediapipePoseLoaded = true;"></script>
+  <script src="/static/main_jwt.js?v=fixed_sensitivity_0.1" defer></script>
+  <style>
+    :root {
+      --primary-color: #3b82f6;
+      --success-color: #10b981;
+      --bg-color: #f8f9fa;
+      --text-dark: #0f172a;
+      --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      --card-radius: 12px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-dark);
+      padding-bottom: 40px;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    .navbar-brand {
+      font-family: 'Poppins', sans-serif;
+    }
+
+    .navbar {
+      background-color: #ffffff;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+      padding: 1rem 0;
+    }
+
+    .navbar-brand {
+      font-weight: 700;
+      color: var(--text-dark) !important;
+      font-size: 1.5rem;
+    }
+
+    .nav-link-custom {
+      color: var(--primary-color);
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+
+    .nav-link-custom:hover {
+      color: #2563eb;
+    }
+
+    .card-custom {
+      background: #ffffff;
+      border: none;
+      border-radius: var(--card-radius);
+      box-shadow: var(--card-shadow);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      height: 100%;
+    }
+
+    .card-custom:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 15px rgba(0, 0, 0, 0.05);
+    }
+
+    .card-header-custom {
+      background: #f8f9fa;
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid #eef2f6;
+      font-weight: 600;
+      color: #1e293b;
+    }
+
+    .card-body-custom {
+      padding: 1.5rem;
+    }
+
+    .btn-primary-custom {
+      background-color: var(--primary-color);
+      border: none;
+      padding: 0.6rem 1.5rem;
+      border-radius: 8px;
+      font-weight: 500;
+      transition: all 0.2s;
+      color: white;
+    }
+
+    .btn-primary-custom:hover {
+      background-color: #2563eb;
+      transform: translateY(-1px);
+      color: white;
+    }
+
+    .btn-outline-custom {
+      border: 1px solid #e2e8f0;
+      color: var(--text-dark);
+      background: transparent;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+
+    .btn-outline-custom:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+    }
+
+    #video-container {
+      position: relative;
+      border-radius: var(--card-radius);
+      overflow: hidden;
+      background: #000;
+      box-shadow: var(--card-shadow);
+    }
+
+    video,
+    canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .stat-card {
+      background: #f8fafc;
+      border-radius: 10px;
+      padding: 1.5rem;
+      text-align: center;
+      margin-bottom: 1rem;
+      border: 1px solid #e2e8f0;
+    }
+
+    .stat-value {
+      font-size: 3.5rem;
+      font-weight: 700;
+      color: var(--primary-color);
+      line-height: 1;
+      font-family: 'Poppins', sans-serif;
+    }
+
+    .stat-label {
+      color: #64748b;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 0.5rem;
+    }
+
+    .badge-stage {
+      font-size: 1rem;
+      padding: 0.5rem 1rem;
+      border-radius: 50px;
+      background-color: #e0f2fe;
+      color: #0369a1;
+      font-weight: 600;
+      display: inline-block;
+      margin-top: 1rem;
+    }
+
+    .voice-fab {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: var(--primary-color);
+      color: white;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin: 1rem auto;
+    }
+
+    .voice-fab:hover {
+      transform: scale(1.05);
+      background: #2563eb;
+    }
+
+    .voice-fab.active {
+      background: #ef4444;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+      }
+
+      70% {
+        box-shadow: 0 0 0 15px rgba(239, 68, 68, 0);
+      }
+
+      100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+      }
+    }
+
+    .upload-zone {
+      border: 2px dashed #cbd5e1;
+      border-radius: var(--card-radius);
+      padding: 2rem;
+      text-align: center;
+      background: #f8fafc;
+      transition: border-color 0.2s;
+    }
+
+    .upload-zone:hover {
+      border-color: var(--primary-color);
+      background: #f1f5f9;
+    }
+
+    .result-card {
+      background: #ffffff;
+      border-radius: 10px;
+      padding: 1.25rem;
+      border-left: 4px solid var(--success-color);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+    }
+
+    .result-label {
+      font-size: 0.85rem;
+      color: #64748b;
+      margin-bottom: 0.25rem;
+    }
+
+    .result-value {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text-dark);
+    }
+
+    .glow-text {
+      text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+    }
+  </style>
+</head>
+
+<body>
+  <nav class="navbar navbar-expand-lg sticky-top">
+    <div class="container">
+      <a class="navbar-brand" href="#"><span style="color: var(--primary-color);">Physio</span>AI Coach</a>
+      <div class="d-flex align-items-center gap-4">
+        <div class="d-flex align-items-center gap-2">
+          <div class="bg-light rounded-circle d-flex align-items-center justify-content-center"
+            style="width: 40px; height: 40px;">
+            <i class="bi bi-person text-secondary"></i>
+          </div>
+          <div id="usernameDisplay" class="fw-medium small">User</div>
+        </div>
+        <button id="loadHistoryBtn" class="btn btn-link nav-link-custom p-0 text-decoration-none">Load History</button>
+        <button id="weeklyReportBtn" type="button" class="btn btn-link nav-link-custom p-0 text-decoration-none ms-3">📅
+          Weekly
+          Report</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mt-4">
+    <!-- Token Management -->
+    <div class="row mb-4">
+      <div class="col-12">
+        <div class="card-custom p-3 d-flex flex-row align-items-center justify-content-between flex-wrap gap-3">
+          <div class="d-flex align-items-center gap-2 flex-grow-1">
+            <span class="text-muted small">API Token:</span>
+            <input id="apiToken" type="text" class="form-control form-control-sm border-0 bg-light"
+              placeholder="Enter your token here..." style="max-width: 300px;">
+            <button id="clearTokenBtn" class="btn btn-sm btn-outline-secondary rounded-circle"
+              style="width: 24px; height: 24px; padding: 0; line-height: 1;">&times;</button>
+          </div>
+          <div class="d-flex gap-2">
+            <input id="usernameInput" type="text" class="form-control form-control-sm" placeholder="Username"
+              style="width: 120px;">
+            <button id="createUserBtn" class="btn btn-sm btn-outline-primary">Get Token</button>
+            <button id="copyTokenBtn" class="btn btn-sm btn-outline-secondary">Copy</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Biometric Analysis -->
+    <div class="row g-4 mb-5">
+      <div class="col-12">
+        <div class="card-custom">
+          <div class="card-header-custom">Biometric Analysis</div>
+          <div class="card-body-custom">
+            <div class="row g-4">
+              <div class="col-md-4">
+                <div class="upload-zone h-100 d-flex flex-column justify-content-center align-items-center">
+                  <div class="mb-3"><i class="bi bi-cloud-arrow-up display-4 text-muted"></i></div>
+                  <h6 class="text-muted mb-3">Drag & Drop or Click to Upload</h6>
+                  <input id="file" type="file" accept="image/*" class="form-control form-control-sm mb-3"
+                    style="max-width: 250px;">
+                  <div class="d-flex flex-column gap-2 w-100 px-4">
+                    <div class="form-check text-start">
+                      <input class="form-check-input" type="checkbox" id="useHeight">
+                      <label class="form-check-label small text-muted" for="useHeight">Provide height (cm)</label>
+                    </div>
+                    <input id="heightValue" type="number" class="form-control form-control-sm" value="170" min="100"
+                      max="230">
+                    <label class="form-check-label small text-muted mt-2" for="ageValue">Age</label>
+                    <input id="ageValue" type="number" class="form-control form-control-sm" value="30" min="10"
+                      max="120">
+                    <div class="form-check text-start mt-2">
+                      <input class="form-check-input" type="checkbox" id="useSeg">
+                      <label class="form-check-label small text-muted" for="useSeg">Server-side segmentation</label>
+                    </div>
+                  </div>
+                  <button id="uploadBtn" class="btn btn-primary-custom w-100 mt-3">Analyze Physique</button>
+                  <div id="uploadStatus" class="small mt-2 text-muted"></div>
+                </div>
+              </div>
+              <div class="col-md-8">
+                <div id="uploadResult" style="display:none;">
+                  <!-- Analysis Results -->
+                  <div class="card-custom mb-4">
+                    <div class="card-header-custom">Analysis Results</div>
+                    <div class="card-body-custom">
+                      <div class="row align-items-center">
+                        <div class="col-md-6">
+                          <div class="mb-3">
+                            <span class="result-label d-block">Waist Circumference</span>
+                            <span id="u_waist_cm" class="result-value">--</span> <span class="text-muted">cm</span>
+                          </div>
+                          <div id="bodyFatDisplay" class="mb-3" style="display:none;">
+                            <span class="result-label d-block">Body Fat Percentage</span>
+                            <span id="u_body_fat" class="result-value text-primary">--</span> <span
+                              class="text-muted">%</span>
+                          </div>
+                          <div class="mb-3">
+                            <span class="result-label d-block">Method Used</span>
+                            <span id="method_used" class="badge bg-light text-dark border">--</span>
+                          </div>
+                          <div class="mb-3">
+                            <span class="result-label d-block">Scan Quality</span>
+                            <span id="scan_quality_badge" class="badge bg-secondary">--</span>
+                            <div id="scan_quality_msg" class="small text-muted mt-1" style="font-size: 0.75rem;"></div>
+                          </div>
+                          <!-- Debug info (hidden/small) -->
+                          <div class="text-muted small" style="font-size: 0.7rem;">
+                            Raw: <span id="u_waist_px">--</span> px
+                          </div>
+                        </div>
+                        <div class="col-md-6 text-center">
+                          <div class="ratio ratio-4x3 bg-light rounded overflow-hidden border">
+                            <img id="debug-img" src="" alt="Analysis Visualization" style="object-fit: contain;">
+                          </div>
+                          <small class="text-muted d-block mt-2">AI Analysis Visualization</small>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Prescribed Workouts -->
+                  <div id="workoutSection" style="display:none;">
+                    <h3 class="mb-3">Prescribed Workouts</h3>
+                    <p class="text-muted mb-4">Personalized recommendations based on your biometric analysis.</p>
+                    <div id="workoutGrid" class="row g-4"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search Panel -->
+    <div class="row mb-5">
+      <div class="col-12">
+        <div class="card-custom p-4 bg-white">
+          <h5 class="mb-3">Exercise Library</h5>
+          <div class="input-group">
+            <input id="tutorialSearchInput" type="text" class="form-control"
+              placeholder="Search for any exercise (e.g., 'Squats')...">
+            <button id="tutorialSearchBtn" class="btn btn-primary-custom">Search Tutorials</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- History Section -->
+    <div id="historyCard" class="card-custom mb-5" style="display:none;">
+      <div class="card-header-custom">History</div>
+      <div class="card-body-custom">
+        <div id="historyStatus"></div>
+        <div class="table-responsive">
+          <table id="historyTable" class="table table-hover align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Preview</th>
+                <th>Date</th>
+                <th>Waist</th>
+                <th>Workouts</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="historyBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Workspace -->
+    <div class="container mb-5">
+      <div class="row g-4">
+        <div class="col-lg-8">
+          <div class="card-custom">
+            <div class="card-header-custom d-flex justify-content-between align-items-center">
+              <span>Live Analysis</span>
+              <div class="d-flex gap-2">
+                <button id="startBtn" class="btn btn-sm btn-primary-custom">Start Camera</button>
+                <button id="stopBtn" class="btn btn-sm btn-outline-danger" disabled>Stop</button>
+              </div>
+            </div>
+            <div class="card-body-custom p-0">
+              <div id="video-container"
+                class="position-relative bg-black d-flex justify-content-center align-items-center"
+                style="min-height: 480px; overflow: hidden;">
+                <video id="input_video" style="display:block; width: 100%; height: 100%; object-fit: cover;" playsinline
+                  muted></video>
+                <canvas id="overlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></canvas>
+                <div id="cameraOverlay"
+                  class="position-absolute top-50 start-50 translate-middle text-center text-white-50"
+                  style="pointer-events: none;">
+                  <i class="bi bi-person-bounding-box display-1"></i>
+                  <p class="mt-3 fs-5 glow-text">Align your body here for analysis</p>
+                </div>
+              </div>
+            </div>
+            <div class="p-3 border-top bg-light d-flex justify-content-between align-items-center">
+              <div class="d-flex align-items-center gap-3">
+                <div class="input-group input-group-sm" style="width: 200px;">
+                  <span class="input-group-text">Up Angle</span>
+                  <input id="upAngle" type="number" class="form-control" value="150">
+                </div>
+                <div class="input-group input-group-sm" style="width: 200px;">
+                  <span class="input-group-text">Down Angle</span>
+                  <input id="downAngle" type="number" class="form-control" value="70">
+                </div>
+              </div>
+              <div>
+                <button id="resetBtn" class="btn btn-sm btn-outline-secondary">Reset Counter</button>
+                <button id="snapshotBtn" class="btn btn-sm btn-outline-secondary">Snapshot</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card-custom h-100">
+            <div class="card-header-custom">Session Stats</div>
+            <div class="card-body-custom d-flex flex-column justify-content-center align-items-center">
+              <div class="stat-card w-100">
+                <div class="stat-value" id="rep-count">0</div>
+                <div class="stat-label">Repetitions</div>
+              </div>
+              <div class="text-center my-3">
+                <span class="text-muted small d-block mb-2">Current Stage</span>
+                <div id="form-feedback" class="badge-stage">Ready</div>
+              </div>
+              <div class="mt-auto text-center">
+                <button id="voiceToggle" class="voice-fab" title="Toggle Voice Control"><span
+                    class="mic-icon">🎙️</span></button>
+                <div class="small text-muted mt-2">Voice Control</div>
+              </div>
+            </div>
+
+            <div class="modal fade" id="tutorialModal" tabindex="-1" aria-hidden="true">
+              <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title" id="tutorialTitle">Exercise Tutorial</h5>
+                    <button type="button" class="btn-close" id="closeTutorialModal" data-bs-dismiss="modal"
+                      aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body text-center">
+                    <div class="ratio ratio-16x9 mb-3"><iframe id="tutorialFrame" src="" allowfullscreen></iframe>
+                    </div>
+                    <a id="tutorialLink" href="#" target="_blank" class="btn btn-primary-custom">Watch on
+                      YouTube</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Weekly Report Modal -->
+            <div class="modal fade" id="weeklyReportModal" tabindex="-1" aria-hidden="true">
+              <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title">Weekly Progress Report</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div class="row g-4">
+                      <div class="col-md-4">
+                        <div class="card p-3 text-center h-100 border-primary bg-primary-subtle">
+                          <h6 class="text-primary">Workouts this Week</h6>
+                          <h2 class="display-4 fw-bold text-primary" id="wrTotalScans">0</h2>
+                          <small class="text-muted">Total Scans</small>
+                        </div>
+                      </div>
+                      <div class="col-md-4">
+                        <div class="card p-3 text-center h-100">
+                          <h6 class="text-muted">Current Waist</h6>
+                          <h2 class="display-4 fw-bold" id="wrLatestWaist">0</h2>
+                          <small class="text-muted">cm</small>
+                        </div>
+                      </div>
+                      <div class="col-md-4">
+                        <div class="card p-3 text-center h-100" id="wrChangeCard">
+                          <h6 class="text-muted">Weekly Change</h6>
+                          <h2 class="display-4 fw-bold" id="wrWeeklyChange">0</h2>
+                          <small class="text-muted">cm</small>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="mt-4 text-center text-muted">
+                      <small>Based on your activity from the last 7 days.</small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="error" class="alert alert-danger fixed-bottom m-3" style="display:none; max-width: 500px;" role="alert">
+      </div>
+      <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>

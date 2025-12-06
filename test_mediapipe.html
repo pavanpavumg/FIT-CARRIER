@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>MediaPipe Quick Test</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.4/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.4/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.js"></script>
+  <style>video, canvas { width:480px; height:360px; }</style>
+</head>
+<body>
+  <h3>MediaPipe quick test</h3>
+  <video id="video" playsinline></video><canvas id="canvas"></canvas>
+  <script>
+    (async ()=>{
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({video:true});
+        video.srcObject = stream;
+        await video.play();
+        const pose = new mpPose.Pose({locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}`});
+        pose.setOptions({modelComplexity:1, minDetectionConfidence:0.5});
+        pose.onResults((r)=>{
+          ctx.clearRect(0,0,canvas.width,canvas.height);
+          ctx.drawImage(video,0,0,canvas.width,canvas.height);
+          if (r.poseLandmarks) {
+            for (const p of r.poseLandmarks) {
+              ctx.fillStyle='red';
+              ctx.beginPath(); ctx.arc(p.x*canvas.width, p.y*canvas.height, 4, 0, 2*Math.PI); ctx.fill();
+            }
+          }
+        });
+        function loop(){ pose.send({image:video}).catch(e=>console.error(e)); requestAnimationFrame(loop); }
+        loop();
+        console.log("test running");
+      } catch (e) {
+        console.error("camera failed:", e);
+        alert("camera failed: " + e.message);
+      }
+    })();
+  </script>
+</body>
+</html>
