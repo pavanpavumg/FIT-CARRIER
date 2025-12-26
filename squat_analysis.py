@@ -27,7 +27,7 @@ class SquatAnalyzer:
         # Thresholds
         self.STANDING_THRESH = 160
         self.DEPTH_THRESH = 90
-        self.BACK_WARN_THRESH = 45  # Degrees of forward lean
+        self.BACK_WARN_THRESH = 30  # Degrees of forward lean
         
     def calculate_angle(self, a, b, c):
         """Calculate angle between three points (a-b-c) in degrees."""
@@ -113,6 +113,7 @@ class SquatAnalyzer:
             self.stability_score = max(0, self.stability_score - 0.5)
         
         # State Transitions
+        # State Transitions
         if self.state == 0: # Standing
             if knee_angle < self.STANDING_THRESH - 10: # Started descent
                 self.state = 1
@@ -120,23 +121,37 @@ class SquatAnalyzer:
                 self.valid_rep = False
                 self.min_depth = 180
             else:
-                self.feedback = "Stand straight"
+                self.feedback = "Stand straight to start"
                 
         elif self.state == 1: # Descending
             self.min_depth = min(self.min_depth, knee_angle)
             if knee_angle < self.DEPTH_THRESH:
                 self.state = 2
                 self.valid_rep = True # Hit depth
-                self.feedback = "Good Depth!"
-                skeleton_color = (0, 255, 0) # Green
+                # Check for perfect form at bottom
+                if back_safe:
+                    self.feedback = "Perfect Form! ✅"
+                    skeleton_color = (0, 255, 0) # Green
+                else:
+                    self.feedback = "Keep Chest Up! ⚠️"
+                    skeleton_color = (0, 0, 255) # Red
             elif knee_angle > self.prev_knee_angle + 5: # Started ascending early
                 self.state = 3
-                self.feedback = "Too Shallow"
-                skeleton_color = (0, 0, 255) # Red
+                self.feedback = "Go Lower! 📉"
+                skeleton_color = (0, 255, 255) # Yellow
                 
         elif self.state == 2: # Bottom
             self.min_depth = min(self.min_depth, knee_angle)
-            skeleton_color = (0, 255, 0) # Green
+            
+            # Continuous check at bottom
+            if back_safe:
+                 if knee_angle < self.DEPTH_THRESH:
+                    self.feedback = "Perfect Form! ✅"
+                    skeleton_color = (0, 255, 0) # Green
+            else:
+                self.feedback = "Keep Chest Up! ⚠️"
+                skeleton_color = (0, 0, 255) # Red
+
             if knee_angle > self.DEPTH_THRESH + 10:
                 self.state = 3
                 self.feedback = "Rising"
@@ -185,7 +200,10 @@ class SquatAnalyzer:
         lms = result["landmarks"]
         
         # Draw segments
-        cv2.line(image, tuple(map(int, lms["shoulder"])), tuple(map(int, lms["hip"])), color, 3)
+        # Back line color based on back angle safety
+        back_color = (0, 255, 0) if result["back_angle"] <= self.BACK_WARN_THRESH else (0, 0, 255)
+        
+        cv2.line(image, tuple(map(int, lms["shoulder"])), tuple(map(int, lms["hip"])), back_color, 3)
         cv2.line(image, tuple(map(int, lms["hip"])), tuple(map(int, lms["knee"])), color, 3)
         cv2.line(image, tuple(map(int, lms["knee"])), tuple(map(int, lms["ankle"])), color, 3)
         
@@ -197,9 +215,14 @@ class SquatAnalyzer:
         cv2.putText(image, f"Reps: {result['rep_count']}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
         cv2.putText(image, f"State: {result['state']}", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 2)
         
+        # Display Back Angle
+        hip_pt = tuple(map(int, lms["hip"]))
+        cv2.putText(image, f"{result['back_angle']} deg", (hip_pt[0] + 10, hip_pt[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.6, back_color, 2)
+
         # Feedback Color
-        fb_color = (0, 255, 0) if "Good" in result["feedback"] or "Completed" in result["feedback"] else (0, 0, 255)
-        if result["feedback"] == "Stand straight": fb_color = (255, 255, 255)
+        fb_color = (0, 255, 0) if "Perfect" in result["feedback"] or "Completed" in result["feedback"] else (0, 0, 255)
+        if "Lower" in result["feedback"]: fb_color = (0, 255, 255) # Yellow
+        if result["feedback"] == "Stand straight to start": fb_color = (255, 255, 255)
         
         cv2.putText(image, result["feedback"], (20, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, fb_color, 2)
         

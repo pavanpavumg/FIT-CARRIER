@@ -1,9 +1,7 @@
-fastapi
-uvicorn[standard]
-jinja2
-python-multipart
 opencv-python
+mediapipe
+streamlit
 numpy
-pytest
-python-jose[cryptography]
-passlib[bcrypt]
+pillow
+sqlalchemy
+pandas

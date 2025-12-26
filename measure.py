@@ -4,6 +4,7 @@ import numpy as np
 import math
 from image_quality import assess_image_quality
 
+
 # try to import mediapipe for selfie segmentation (optional)
 try:
     import mediapipe as mp
@@ -13,6 +14,17 @@ try:
 except Exception:
     HAS_MEDIAPIPE = False
     mp_pose = None
+
+# Constants for visualization
+neon_green = (0, 255, 0)
+neon_blue = (255, 255, 0)  # Cyan
+cyan = (255, 255, 0)
+red_alert = (0, 0, 255)
+font = cv2.FONT_HERSHEY_SIMPLEX
+font_scale = 0.8
+thickness = 2
+thick_thickness = 3
+
 
 def segmentation_mask_mediapipe(img_bgr, model_selection=1):
     """
@@ -154,6 +166,8 @@ def estimate_waist_width_px(img_bgr, use_segmentation=False, torso_frac=(0.30, 0
 def analyze_body(image, user_height_cm, gender="male", age=30):
     """
     Scientific Body Fat Estimation using MediaPipe Pose Landmarks and US Navy Method.
+    Hybrid Safety Logic: Prioritizes Skeleton Landmarks (High Sensitivity 0.1) for Hips/Waist.
+    Fallback to Contour happens in app.py if this returns None/False.
     
     Args:
         image: BGR image (numpy array)
@@ -162,14 +176,7 @@ def analyze_body(image, user_height_cm, gender="male", age=30):
         age: Age in years (default: 30)
     
     Returns:
-        dict with keys:
-            - body_fat_percentage: Calculated body fat % (or None if calculation failed)
-            - waist_cm: Waist circumference in cm
-            - neck_cm: Neck circumference in cm
-            - annotated_image: BGR image with measurement lines drawn
-            - pixel_to_cm_ratio: Conversion factor
-            - torso_volume_index: Muscle mass indicator (1-100)
-            - landmarks_detected: Boolean indicating if pose was detected
+        dict with keys: Standard Keys
     """
     
     if user_height_cm is None or user_height_cm <= 0:
@@ -197,61 +204,42 @@ def analyze_body(image, user_height_cm, gender="male", age=30):
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     h_img, w_img = image.shape[:2]
     
-    # Initialize MediaPipe Pose
+    # Initialize MediaPipe Pose with High Sensitivity (0.1)
     annotated_img = image.copy()
+    
+    # Visualization Colors
+    red_line_color = (0, 0, 255) # BGR
+    yellow_dot = (0, 255, 255)   # BGR
+    
+    landmarks_detected = False
     
     with mp_pose.Pose(
         static_image_mode=True,
         model_complexity=2,
         enable_segmentation=True,
-        min_detection_confidence=0.2,
-        min_tracking_confidence=0.2
+        min_detection_confidence=0.1,  # User Req: Very High Sensitivity
+        min_tracking_confidence=0.1
     ) as pose:
         results = pose.process(image_rgb)
         
-        # Get segmentation mask if enabled in MP (it's False in config above, but we can enable it or use external)
-        # The user prompt said "Use OpenCV to convert... Calculate pixels inside Body Segmentation Mask".
-        # We need a mask. `measure.py` has `segmentation_mask_mediapipe`.
-        # Let's generate a mask here for quality check if MP pose segmentation is not enabled or to be sure.
-        # Actually, `analyze_body` config has `enable_segmentation=False`. 
-        # I should probably enable it or generate it separately.
-        # Enabling it in `analyze_body` is cleanest.
+        # Step A: Skeleton Check
+        if results.pose_landmarks:
+             landmarks_detected = True
         
-        # WAIT: I can't easily change the `pose` context manager arguments without replacing the whole block.
-        # And I don't want to break existing logic.
-        # But `assess_image_quality` needs a mask for accurate skin detection.
-        # I'll use `segmentation_mask_mediapipe` from `measure.py` (which uses Selfie Segmentation) 
-        # OR just enable segmentation in Pose.
-        
-        # Let's try to use the existing `segmentation_mask_mediapipe` helper if available, 
-        # or just run a quick segmentation if not.
-        # Actually, I'll just enable segmentation in the Pose object I'm creating right here.
-        pass
-        print(f"DEBUG: Landmarks Detected? {bool(results.pose_landmarks)}")
-        
-        if not results.pose_landmarks:
+        if not landmarks_detected:
             return {
                 "body_fat_percentage": None,
                 "waist_cm": None,
                 "neck_cm": None,
                 "annotated_image": annotated_img,
                 "pixel_to_cm_ratio": None,
-                "torso_volume_index": None,
                 "landmarks_detected": False,
-                "error": "Could not detect pose landmarks",
-                "body_morphotype": None,
-                "morphotype_description": None,
-                "shoulder_to_waist_ratio": None,
-                "posture_issues": [],
-                "posture_good": [],
-                "waist_to_hip_ratio": None,
-                "health_risk_level": None,
-                "hip_cm": None
+                "error": "Could not detect pose landmarks"
             }
         
         landmarks = results.pose_landmarks.landmark
         
-        # Draw skeleton
+        # Draw skeleton standard
         if mp.solutions.drawing_utils:
             mp.solutions.drawing_utils.draw_landmarks(
                 annotated_img,
@@ -259,361 +247,138 @@ def analyze_body(image, user_height_cm, gender="male", age=30):
                 mp_pose.POSE_CONNECTIONS
             )
         
-        # Extract key landmarks (MediaPipe Pose indices)
-        # Nose: 0, Left Ear: 7, Right Ear: 8
-        # Left Shoulder: 11, Right Shoulder: 12
-        # Left Hip: 23, Right Hip: 24
-        # Left Ankle: 27, Right Ankle: 28
-        
         def get_landmark_xy(idx):
-
-            if idx >= len(landmarks):
-                return None
+            if idx >= len(landmarks): return None
             lm = landmarks[idx]
             return (int(lm.x * w_img), int(lm.y * h_img))
         
+        # Key Landmarks
         nose = get_landmark_xy(0)
-        left_ear = get_landmark_xy(7)
-        right_ear = get_landmark_xy(8)
         left_shoulder = get_landmark_xy(11)
         right_shoulder = get_landmark_xy(12)
         left_hip = get_landmark_xy(23)
         right_hip = get_landmark_xy(24)
         left_ankle = get_landmark_xy(27)
         right_ankle = get_landmark_xy(28)
+        left_ear = get_landmark_xy(7)
+        right_ear = get_landmark_xy(8)
         
-        # Check if all required landmarks are visible
-        required_landmarks = [nose, left_shoulder, right_shoulder, left_hip, right_hip, left_ankle, right_ankle]
-        if any(lm is None for lm in required_landmarks):
-            return {
-                "body_fat_percentage": None,
-                "waist_cm": None,
-                "neck_cm": None,
-                "annotated_image": annotated_img,
-                "pixel_to_cm_ratio": None,
-                "torso_volume_index": None,
-                "landmarks_detected": False,
-                "error": "Not all required landmarks detected",
-                "body_morphotype": None,
-                "morphotype_description": None,
-                "shoulder_to_waist_ratio": None,
-                "posture_issues": [],
-                "posture_good": [],
-                "waist_to_hip_ratio": None,
-                "health_risk_level": None,
-                "hip_cm": None
-            }
-        
-        # Step 2: Calculate Pixel-to-CM Conversion (The Scale)
-        # Use average ankle position for bottom reference
-        avg_ankle_y = (left_ankle[1] + right_ankle[1]) / 2
-        person_pixel_height = abs(nose[1] - avg_ankle_y)
-        
+        # Height Reference (Nose to Avg Ankle)
+        if nose and left_ankle and right_ankle:
+            avg_ankle_y = (left_ankle[1] + right_ankle[1]) / 2
+            person_pixel_height = abs(nose[1] - avg_ankle_y)
+        else:
+             # Fallback height if ankles missing (try knees or just hips * 2 approx?)
+             # For safety, let's require ankles or at least significant body part
+             return { "landmarks_detected": False, "annotated_image": annotated_img }
+
         if person_pixel_height <= 0:
-            return {
-                "body_fat_percentage": None,
-                "waist_cm": None,
-                "neck_cm": None,
-                "annotated_image": annotated_img,
-                "pixel_to_cm_ratio": None,
-                "torso_volume_index": None,
-                "landmarks_detected": False,
-                "error": "Invalid height measurement",
-                "body_morphotype": None,
-                "morphotype_description": None,
-                "shoulder_to_waist_ratio": None,
-                "posture_issues": [],
-                "posture_good": [],
-                "waist_to_hip_ratio": None,
-                "health_risk_level": None,
-                "hip_cm": None
-            }
-        
+             return { "landmarks_detected": False, "annotated_image": annotated_img }
+
         pixel_to_cm_ratio = user_height_cm / person_pixel_height
         
-        # Step 3: Extract Measurements (in Pixels)
-        # Shoulder Width: Distance between Left Shoulder and Right Shoulder
-        shoulder_width_px = math.sqrt(
-            (right_shoulder[0] - left_shoulder[0]) ** 2 + 
-            (right_shoulder[1] - left_shoulder[1]) ** 2
-        )
+        # --- LOGIC UPDATE: WAIST from HIPS (For Safety) ---
+        waist_width_px = 0
+        waist_cm = 0
+        hip_cm = 0
         
-        # Waist Width: Distance between Left Hip and Right Hip
-        waist_width_px = math.sqrt(
-            (right_hip[0] - left_hip[0]) ** 2 + 
-            (right_hip[1] - left_hip[1]) ** 2
-        )
+        if left_hip and right_hip:
+            # Distance(23, 24)
+            dist_px = math.sqrt((left_hip[0]-right_hip[0])**2 + (left_hip[1]-right_hip[1])**2)
+            waist_width_px = dist_px
+            hip_width_px = dist_px # Same as waist for safety logic
+            
+            # Draw Red Line
+            cv2.line(annotated_img, left_hip, right_hip, red_line_color, 2)
+            
+            # Draw Yellow Dot
+            cv2.circle(annotated_img, left_hip, 5, yellow_dot, -1)
+            cv2.circle(annotated_img, right_hip, 5, yellow_dot, -1)
+            
+            # Calculate CM
+            # Hip width is a linear projection. Approximate circumference factor ~2.5
+            waist_circumference_px = waist_width_px * 2.5 
+            waist_cm = waist_circumference_px * pixel_to_cm_ratio
+            hip_cm = waist_cm # Same
+        else:
+             # If hips not found despite results.pose_landmarks (rare but possible)
+             return { "landmarks_detected": False, "annotated_image": annotated_img }
+
+        # Shoulder logic for extra stats (keep existing)
+        shoulder_width_px = 0
+        shoulder_width_cm = 0
+        if left_shoulder and right_shoulder:
+            shoulder_width_px = math.sqrt((left_shoulder[0]-right_shoulder[0])**2 + (left_shoulder[1]-right_shoulder[1])**2)
+            shoulder_width_cm = shoulder_width_px * pixel_to_cm_ratio
+            
+        # Neck Logic
+        neck_cm = (shoulder_width_px * 0.32 * math.pi) * pixel_to_cm_ratio
         
-        # Hip Width: Same as waist for now (can be refined with additional landmarks)
-        hip_width_px = waist_width_px
-        
-        # Convert waist width to circumference (approximate)
-        # For a 2D projection, multiply by a factor to approximate 3D circumference
-        # Using factor of 2.5 for a flattened ellipse approximation
-        waist_circumference_px = waist_width_px * 2.5
-        hip_circumference_px = hip_width_px * 2.5
-        
-        # Neck Width: Estimate based on shoulder width
-        # Neck is typically about 30-35% of shoulder width
-        neck_width_px = shoulder_width_px * 0.32
-        neck_circumference_px = neck_width_px * math.pi  # Approximate as circle
-        
-        # Step 4: Calculate Real Metrics (in cm)
-        waist_cm = waist_circumference_px * pixel_to_cm_ratio
-        hip_cm = hip_circumference_px * pixel_to_cm_ratio
-        neck_cm = neck_circumference_px * pixel_to_cm_ratio
-        shoulder_width_cm = shoulder_width_px * pixel_to_cm_ratio
-        waist_width_cm = waist_width_px * pixel_to_cm_ratio
-        
-        # Step 5: Body Fat Formula (US Navy Method)
-        # Formula: Body Fat % = 495 / (1.0324 - 0.19077 * log10(waist - neck) + 0.15456 * log10(height)) - 450
+        # Body Fat Formula (US Navy Method)
         body_fat_pct = None
-        try:
-            waist_neck_diff = waist_cm - neck_cm
-            if waist_neck_diff > 0 and user_height_cm > 0:
-                log_waist_neck = math.log10(waist_neck_diff)
-                log_height = math.log10(user_height_cm)
-                
-                denominator = 1.0324 - 0.19077 * log_waist_neck + 0.15456 * log_height
-                if denominator > 0:
-                    body_fat_pct = (495 / denominator) - 450
-                    # Clamp to reasonable range
-                    body_fat_pct = max(0.0, min(50.0, body_fat_pct))
-        except (ValueError, ZeroDivisionError) as e:
-            print(f"Body fat calculation error: {e}")
-            body_fat_pct = None
-        
-        # Step 6: Torso Volume Index (Bonus)
-        # Calculate shoulder-to-hip distance
-        avg_shoulder_y = (left_shoulder[1] + right_shoulder[1]) / 2
-        avg_hip_y = (left_hip[1] + right_hip[1]) / 2
-        shoulder_hip_distance_px = abs(avg_shoulder_y - avg_hip_y)
-        shoulder_hip_distance_cm = shoulder_hip_distance_px * pixel_to_cm_ratio
-        
-        # Volume = Waist_Width * Shoulder_To_Hip_Distance (treating as cylinder)
-        torso_volume_cm3 = waist_cm * shoulder_hip_distance_cm
-        
-        # Normalize to score (1-100) - heuristic based on typical ranges
-        # Typical torso volume for adults: 5000-15000 cm³
-        # Normalize: (volume - min) / (max - min) * 100
-        min_volume = 3000
-        max_volume = 20000
-        torso_volume_index = ((torso_volume_cm3 - min_volume) / (max_volume - min_volume)) * 100
-        torso_volume_index = max(1.0, min(100.0, torso_volume_index))
-        
-        # ========== NEW FEATURES ==========
-        
-        # 1. Body Morphotype Detection (Somatotype)
-        # Calculate Shoulder-to-Waist Ratio
-        shoulder_to_waist_ratio = shoulder_width_cm / waist_width_cm if waist_width_cm > 0 else 0
-        
+        if waist_cm and neck_cm:
+            try:
+                waist_neck_diff = waist_cm - neck_cm
+                if waist_neck_diff > 0:
+                    log_waist_neck = math.log10(waist_neck_diff)
+                    log_height = math.log10(user_height_cm)
+                    denominator = 1.0324 - 0.19077 * log_waist_neck + 0.15456 * log_height
+                    if denominator > 0:
+                        body_fat_pct = (495 / denominator) - 450
+                        body_fat_pct = max(0.0, min(50.0, body_fat_pct))
+            except: pass
+
+        # Torso Volume Index
+        torso_volume_index = 50.0 # Default
+        if left_shoulder and left_hip:
+            # simple approx
+            h_torso = abs(left_shoulder[1] - left_hip[1]) * pixel_to_cm_ratio
+            vol = waist_cm * h_torso
+            # normalize 3000-20000 range
+            torso_volume_index = ((vol - 3000) / (17000)) * 100
+            torso_volume_index = max(1.0, min(100.0, torso_volume_index))
+
+        # Morphotype
+        shoulder_to_waist_ratio = shoulder_width_cm / (waist_width_px * pixel_to_cm_ratio) if waist_width_px > 0 else 0
         if shoulder_to_waist_ratio > 1.4:
             body_morphotype = "Mesomorph"
-            morphotype_description = "Athletic/Muscular"
         elif shoulder_to_waist_ratio < 1.1:
             body_morphotype = "Endomorph"
-            morphotype_description = "Higher fat storage"
-        else:  # Between 1.1 - 1.4
+        else:
             body_morphotype = "Ectomorph"
-            morphotype_description = "Lean/Average"
-        
-        # 2. Static Posture Analysis
+
+        # Posture Issues (Simple)
         posture_issues = []
-        posture_good = []
-        
-        # Shoulder Imbalance Check
-        shoulder_y_diff = abs(left_shoulder[1] - right_shoulder[1])
-        shoulder_y_diff_cm = shoulder_y_diff * pixel_to_cm_ratio
-        height_threshold = user_height_cm * 0.02  # 2% of height
-        
-        if shoulder_y_diff_cm > height_threshold:
-            posture_issues.append("Uneven Shoulders")
-            shoulder_imbalance_detected = True
-        else:
-            posture_good.append("Balanced Shoulders")
-            shoulder_imbalance_detected = False
-        
-        # Forward Head Posture (Text Neck) Check
-        forward_head_detected = False
-        if left_ear and right_ear and left_shoulder and right_shoulder:
-            avg_ear_x = (left_ear[0] + right_ear[0]) / 2
-            avg_shoulder_x = (left_shoulder[0] + right_shoulder[0]) / 2
-            ear_forward_offset = avg_ear_x - avg_shoulder_x
-            ear_forward_offset_cm = abs(ear_forward_offset) * pixel_to_cm_ratio
+        if left_shoulder and right_shoulder:
+            diff = abs(left_shoulder[1] - right_shoulder[1]) * pixel_to_cm_ratio
+            if diff > 2.0: posture_issues.append("Uneven Shoulders")
             
-            # Threshold: if ear is more than 3cm forward of shoulder line, flag it
-            forward_threshold_cm = 3.0
-            if ear_forward_offset_cm > forward_threshold_cm:
-                posture_issues.append("Forward Head Posture")
-                forward_head_detected = True
-            else:
-                posture_good.append("Good Head Position")
+        # WHR
+        whr = 1.0 # Since we use same measurement for safety
         
-        # 3. Health Risk Indicator (Waist-to-Hip Ratio - WHR)
-        whr = waist_cm / hip_cm if hip_cm > 0 else 0
-        if whr < 0.9:
-            health_risk_level = "Low Risk"
-            health_risk_color = (0, 255, 0)  # Green
-        else:
-            health_risk_level = "High Risk"
-            health_risk_color = (0, 0, 255)  # Red
-            
-        # 4. Image Quality Assessment
-        # Get segmentation mask from results
-        seg_mask = None
-        if results.segmentation_mask is not None:
-             seg_mask = (results.segmentation_mask.numpy_view() * 255).astype(np.uint8)
-        
-        quality_result = assess_image_quality(image, landmarks, seg_mask)
-        
-        # 5. Visual Output (Cyberpunk Style)
-        # Triangle: Left Shoulder -> Right Shoulder -> Left Hip -> Right Hip -> Left Shoulder
-        triangle_points = np.array([
-            [left_shoulder[0], left_shoulder[1]],
-            [right_shoulder[0], right_shoulder[1]],
-            [right_hip[0], right_hip[1]],
-            [left_hip[0], left_hip[1]]
-        ], np.int32)
-        cv2.polylines(annotated_img, [triangle_points], True, neon_blue, 2)
-        # Fill with semi-transparent overlay
-        overlay = annotated_img.copy()
-        cv2.fillPoly(overlay, [triangle_points], neon_blue)
-        cv2.addWeighted(overlay, 0.15, annotated_img, 0.85, 0, annotated_img)
-        
-        # Posture Visual Indicators
-        if shoulder_imbalance_detected:
-            # Draw Red Alert Lines on shoulders
-            cv2.line(annotated_img, left_shoulder, right_shoulder, red_alert, thick_thickness)
-            # Draw warning symbol
-            alert_x = (left_shoulder[0] + right_shoulder[0]) // 2
-            alert_y = (left_shoulder[1] + right_shoulder[1]) // 2 - 30
-            cv2.putText(annotated_img, "!", (alert_x, alert_y), 
-                       font, 1.5, red_alert, 3)
-        else:
-            # Draw Green Checkmark for good shoulder alignment
-            check_x = (left_shoulder[0] + right_shoulder[0]) // 2
-            check_y = (left_shoulder[1] + right_shoulder[1]) // 2 - 30
-            # Simple checkmark using lines
-            cv2.line(annotated_img, (check_x - 10, check_y), (check_x, check_y + 10), neon_green, 3)
-            cv2.line(annotated_img, (check_x, check_y + 10), (check_x + 15, check_y - 10), neon_green, 3)
-        
-        if forward_head_detected:
-            # Draw red line from ear to shoulder
-            if left_ear and left_shoulder:
-                avg_ear_pos = ((left_ear[0] + right_ear[0]) // 2, (left_ear[1] + right_ear[1]) // 2)
-                avg_shoulder_pos = ((left_shoulder[0] + right_shoulder[0]) // 2, 
-                                   (left_shoulder[1] + right_shoulder[1]) // 2)
-                cv2.line(annotated_img, avg_ear_pos, avg_shoulder_pos, red_alert, 2)
-                cv2.putText(annotated_img, "Forward Head", 
-                           (avg_ear_pos[0] - 50, avg_ear_pos[1] - 10), 
-                           font, 0.5, red_alert, 2)
-        else:
-            # Draw green checkmark for good head position
-            if left_ear:
-                check_x = (left_ear[0] + right_ear[0]) // 2
-                check_y = (left_ear[1] + right_ear[1]) // 2 - 20
-                cv2.line(annotated_img, (check_x - 8, check_y), (check_x, check_y + 8), neon_green, 2)
-                cv2.line(annotated_img, (check_x, check_y + 8), (check_x + 12, check_y - 8), neon_green, 2)
-        
-        # Draw waist line (between hips)
-        cv2.line(annotated_img, left_hip, right_hip, neon_green, 3)
-        waist_mid_x = (left_hip[0] + right_hip[0]) // 2
-        waist_mid_y = (left_hip[1] + right_hip[1]) // 2
-        cv2.putText(annotated_img, f"Waist: {waist_cm:.1f} cm", 
-                   (waist_mid_x - 80, waist_mid_y - 10), 
-                   font, font_scale, neon_green, thickness)
-        
-        # Draw neck line (estimated from shoulders)
-        neck_y = int((left_shoulder[1] + right_shoulder[1]) / 2 - shoulder_width_px * 0.15)
-        neck_left_x = int((left_shoulder[0] + right_shoulder[0]) / 2 - neck_width_px / 2)
-        neck_right_x = int((left_shoulder[0] + right_shoulder[0]) / 2 + neck_width_px / 2)
-        neck_left = (neck_left_x, neck_y)
-        neck_right = (neck_right_x, neck_y)
-        cv2.line(annotated_img, neck_left, neck_right, neon_green, 3)
-        cv2.putText(annotated_img, f"Neck: {neck_cm:.1f} cm", 
-                   (neck_left_x, neck_y - 10), 
-                   font, font_scale, neon_green, thickness)
-        
-        # Draw height line (from nose to ankle)
-        avg_ankle_x = int((left_ankle[0] + right_ankle[0]) / 2)
-        cv2.line(annotated_img, nose, (avg_ankle_x, int(avg_ankle_y)), cyan, 2)
-        height_mid_x = (nose[0] + avg_ankle_x) // 2
-        height_mid_y = (nose[1] + int(avg_ankle_y)) // 2
-        cv2.putText(annotated_img, f"Height: {user_height_cm} cm", 
-                   (height_mid_x - 60, height_mid_y), 
-                   font, font_scale, cyan, thickness)
-        
-        # Draw key landmarks
-        for point in [nose, left_shoulder, right_shoulder, left_hip, right_hip, left_ankle, right_ankle]:
-            cv2.circle(annotated_img, point, 5, (255, 0, 255), -1)
-        
-        # Add body fat percentage text at top
-        y_offset = 30
-        if body_fat_pct is not None:
-            bf_text = f"Body Fat: {body_fat_pct:.1f}%"
-            text_size = cv2.getTextSize(bf_text, font, 1.0, 2)[0]
-            text_x = (w_img - text_size[0]) // 2
-            cv2.putText(annotated_img, bf_text, (text_x, y_offset), 
-                       font, 1.0, neon_green, 2)
-            y_offset += 35
-        
-        # Add torso volume index
-        volume_text = f"Torso Volume Index: {torso_volume_index:.0f}/100"
-        text_size = cv2.getTextSize(volume_text, font, 0.7, 2)[0]
-        text_x = (w_img - text_size[0]) // 2
-        cv2.putText(annotated_img, volume_text, (text_x, y_offset), 
-                   font, 0.7, cyan, 2)
-        y_offset += 30
-        
-        # Add Body Morphotype
-        morphotype_text = f"Body Type: {body_morphotype} ({morphotype_description})"
-        text_size = cv2.getTextSize(morphotype_text, font, 0.7, 2)[0]
-        text_x = (w_img - text_size[0]) // 2
-        cv2.putText(annotated_img, morphotype_text, (text_x, y_offset), 
-                   font, 0.7, neon_blue, 2)
-        y_offset += 30
-        
-        # Add Waist-to-Hip Ratio and Health Risk
-        whr_text = f"WHR: {whr:.2f} - {health_risk_level}"
-        text_size = cv2.getTextSize(whr_text, font, 0.7, 2)[0]
-        text_x = (w_img - text_size[0]) // 2
-        cv2.putText(annotated_img, whr_text, (text_x, y_offset), 
-                   font, 0.7, health_risk_color, 2)
-        y_offset += 30
-        
-        # Add Posture Analysis Results
-        if posture_issues:
-            posture_text = "Posture Issues: " + ", ".join(posture_issues)
-            text_size = cv2.getTextSize(posture_text, font, 0.6, 2)[0]
-            text_x = (w_img - text_size[0]) // 2
-            cv2.putText(annotated_img, posture_text, (text_x, y_offset), 
-                       font, 0.6, red_alert, 2)
-            y_offset += 25
-        
-        if posture_good:
-            posture_text = "Good: " + ", ".join(posture_good)
-            text_size = cv2.getTextSize(posture_text, font, 0.6, 2)[0]
-            text_x = (w_img - text_size[0]) // 2
-            cv2.putText(annotated_img, posture_text, (text_x, y_offset), 
-                       font, 0.6, neon_green, 2)
-    
-    return {
-        "body_fat_percentage": round(body_fat_pct, 1) if body_fat_pct is not None else None,
-        "waist_cm": round(waist_cm, 1),
-        "neck_cm": round(neck_cm, 1),
-        "annotated_image": annotated_img,
-        "pixel_to_cm_ratio": round(pixel_to_cm_ratio, 4),
-        "torso_volume_index": round(torso_volume_index, 1),
-        "landmarks_detected": True,
-        "error": None,
-        # New features
-        "body_morphotype": body_morphotype,
-        "morphotype_description": morphotype_description,
-        "shoulder_to_waist_ratio": round(shoulder_to_waist_ratio, 2),
-        "posture_issues": posture_issues,
-        "posture_good": posture_good,
-        "waist_to_hip_ratio": round(whr, 2),
-        "health_risk_level": health_risk_level,
-        "hip_cm": round(hip_cm, 1),
-        "scan_quality": quality_result
-    }
+        # Scan Quality
+        quality_result = assess_image_quality(image, results.pose_landmarks) if results.pose_landmarks else None
+
+        # Health Risk
+        health_risk_level = "Moderate" if body_fat_pct and body_fat_pct > 25 else "Low"
+
+        return {
+            "body_fat_percentage": round(body_fat_pct, 1) if body_fat_pct is not None else None,
+            "waist_cm": round(waist_cm, 1),
+            "neck_cm": round(neck_cm, 1),
+            "annotated_image": annotated_img,
+            "pixel_to_cm_ratio": round(pixel_to_cm_ratio, 4),
+            "torso_volume_index": round(torso_volume_index, 1),
+            "landmarks_detected": True,
+            "error": None,
+            # New features
+            "body_morphotype": body_morphotype,
+            "morphotype_description": "Analyzed via Skeleton (Safe Mode)",
+            "shoulder_to_waist_ratio": round(shoulder_to_waist_ratio, 2),
+            "posture_issues": posture_issues,
+            "posture_good": [],
+            "waist_to_hip_ratio": round(whr, 2),
+            "health_risk_level": health_risk_level,
+            "hip_cm": round(hip_cm, 1),
+            "scan_quality": quality_result
+        }

@@ -23,6 +23,9 @@ from passlib.context import CryptContext
 from measure import estimate_waist_width_px, analyze_body
 from exercise_database import get_recommended_workouts
 from anomaly_detector import check_anomaly
+import mediapipe as mp
+from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
+from AdvancedSquatAnalyzer import AdvancedSquatAnalyzer
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -162,7 +165,11 @@ def init_db(force=False):
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT UNIQUE NOT NULL,
                     password_hash TEXT,
-                    token TEXT UNIQUE
+                    token TEXT UNIQUE,
+                    streak_count INTEGER DEFAULT 0,
+                    last_activity_date TEXT,
+                    total_reps_all_time INTEGER DEFAULT 0,
+                    badges_earned TEXT DEFAULT '[]'
                 );
                 """)
             else:
@@ -174,6 +181,38 @@ def init_db(force=False):
                         cur.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
                     except sqlite3.OperationalError:
                         pass  # Column might already exist
+            
+            # Ensure gamification columns exist (for existing DBs if migration script wasn't run)
+            # We trust migration for now or simple manual checks, but for app logic integrity:
+            cur.execute("PRAGMA table_info(users)")
+            user_cols = [row[1] for row in cur.fetchall()]
+            new_cols = {
+                "streak_count": "INTEGER DEFAULT 0",
+                "last_activity_date": "TEXT",
+                "total_reps_all_time": "INTEGER DEFAULT 0",
+                "badges_earned": "TEXT DEFAULT '[]'"
+            }
+            for col, defn in new_cols.items():
+                if col not in user_cols:
+                    try:
+                        cur.execute(f"ALTER TABLE users ADD COLUMN {col} {defn}")
+                    except sqlite3.OperationalError:
+                        pass
+
+
+            # Create workout_logs table
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS workout_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                timestamp TEXT NOT NULL,
+                reps INTEGER DEFAULT 0,
+                workout_type TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            );
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_workout_logs_timestamp ON workout_logs(timestamp DESC);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_workout_logs_user_id ON workout_logs(user_id);")
 
             # Create measurements table
             cur.execute("""
@@ -396,6 +435,232 @@ def delete_history_item_for_user(user_id: int, item_id: int):
         return True
     return _with_db_retry(_op)
 
+# Gamification Logic
+# Gamification Logic
+
+def check_login_streak(user_id: int):
+    """Updates login streak based on last_login_date."""
+    init_db()
+    
+    today = datetime.now().date()
+    today_str = today.isoformat()
+    yesterday = today - timedelta(days=1)
+    yesterday_str = yesterday.isoformat()
+    
+    current_streak = 0
+    last_login = None
+    
+    def _read():
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT current_login_streak, last_login_date FROM users WHERE id = ?", (user_id,))
+            return cur.fetchone()
+        finally:
+            conn.close()
+            
+    row = _with_db_retry(_read)
+    if row:
+        current_streak = row[0] or 0
+        last_login = row[1]
+    
+    new_streak = current_streak
+    
+    if last_login == today_str:
+        pass # Already logged in today
+    elif last_login == yesterday_str:
+        new_streak += 1
+    else:
+        new_streak = 1 # Reset or Start
+        
+    if new_streak != current_streak or last_login != today_str:
+        def _write():
+            conn = sqlite3.connect(DB_PATH)
+            try:
+                cur = conn.cursor()
+                cur.execute("UPDATE users SET current_login_streak = ?, last_login_date = ? WHERE id = ?", 
+                           (new_streak, today_str, user_id))
+                conn.commit()
+            finally:
+                conn.close()
+        _with_db_retry(_write)
+        
+    return new_streak
+
+def check_workout_streak(user_id: int):
+    """Updates workout streak based on last_workout_date (called on valid workout)."""
+    init_db()
+    
+    today = datetime.now().date()
+    today_str = today.isoformat()
+    yesterday = today - timedelta(days=1)
+    yesterday_str = yesterday.isoformat()
+    
+    current_streak = 0
+    last_workout = None
+    
+    def _read():
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT current_workout_streak, last_workout_date FROM users WHERE id = ?", (user_id,))
+            return cur.fetchone()
+        finally:
+            conn.close()
+            
+    row = _with_db_retry(_read)
+    if row:
+        current_streak = row[0] or 0
+        last_workout = row[1]
+    
+    new_streak = current_streak
+    updated = False
+    
+    if last_workout == today_str:
+        pass # Already worked out today
+    elif last_workout == yesterday_str:
+        new_streak += 1
+        updated = True
+    else:
+        new_streak = 1 # Reset or Start
+        updated = True
+        
+    if updated or last_workout != today_str:
+        def _write():
+            conn = sqlite3.connect(DB_PATH)
+            try:
+                cur = conn.cursor()
+                cur.execute("UPDATE users SET current_workout_streak = ?, last_workout_date = ? WHERE id = ?", 
+                           (new_streak, today_str, user_id))
+                conn.commit()
+            finally:
+                conn.close()
+        _with_db_retry(_write)
+        
+    return new_streak
+
+def update_weekly_consistency(user_id: int):
+    """Updates weekly consistency score (workouts in last 7 days)."""
+    init_db()
+    
+    def _op():
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            cur = conn.cursor()
+            # Count distinct days with measurements in last 7 days
+            seven_days_ago = (datetime.now() - timedelta(days=7)).isoformat()
+            cur.execute("""
+                SELECT COUNT(DISTINCT substr(timestamp, 1, 10)) 
+                FROM measurements 
+                WHERE user_id = ? AND timestamp >= ?
+            """, (user_id, seven_days_ago))
+            count = cur.fetchone()[0]
+            
+            # Update score
+            cur.execute("UPDATE users SET weekly_consistency_score = ? WHERE id = ?", (count, user_id))
+            conn.commit()
+            return count
+        finally:
+            conn.close()
+            
+    return _with_db_retry(_op)
+
+def check_gamification(user_id: int):
+    """
+    Check and update streaks and badges.
+    Now handles Login vs Workout streaks separately.
+    Called AFTER a workout logic.
+    """
+    init_db()
+    
+    # Update Workout Streak explicit call
+    workout_streak = check_workout_streak(user_id)
+    
+    # Update Consistency
+    consistency_score = update_weekly_consistency(user_id)
+    
+    # Get Stats for Badges
+    stats = {}
+    def _get_stats():
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT total_reps_all_time, badges_earned FROM users WHERE id = ?", (user_id,))
+            return cur.fetchone()
+        finally:
+            conn.close()
+            
+    row = _with_db_retry(_get_stats)
+    if not row: return None
+    
+    total_reps = row[0] or 0
+    badges_json = row[1] or '[]'
+    try:
+        badges_list = json.loads(badges_json)
+    except:
+        badges_list = []
+        
+    new_badges = []
+    
+    # "Hot Streak": Workout Streak >= 3 (Low bar for demo) or 7
+    if workout_streak >= 3:
+        if "hot_streak" not in badges_list:
+            badges_list.append("hot_streak")
+            new_badges.append("hot_streak")
+            
+    # "Consistent": 3+ days a week
+    if consistency_score >= 3:
+         if "consistent" not in badges_list:
+            badges_list.append("consistent")
+            new_badges.append("consistent")
+
+    # "Early Riser": 5AM - 8AM (Check current time)
+    now_hour = datetime.now().hour
+    if 5 <= now_hour < 8:
+        if "early_riser" not in badges_list:
+            badges_list.append("early_riser")
+            new_badges.append("early_riser")
+
+    # "Centurion"
+    if total_reps > 100:
+        if "centurion" not in badges_list:
+            badges_list.append("centurion")
+            new_badges.append("centurion")
+            
+    # Save Badges
+    if new_badges:
+        def _save_badges():
+            conn = sqlite3.connect(DB_PATH)
+            try:
+                cur = conn.cursor()
+                cur.execute("UPDATE users SET badges_earned = ? WHERE id = ?", (json.dumps(badges_list), user_id))
+                conn.commit()
+            finally:
+                conn.close()
+        _with_db_retry(_save_badges)
+        
+    return {
+        "streak_count": workout_streak, # For backward compat in UI response
+        "workout_streak": workout_streak,
+        "consistency_score": consistency_score,
+        "badges_earned": badges_list,
+        "new_badges": new_badges
+    }
+
+def update_user_reps(user_id: int, reps: int):
+    """Increment total reps for user."""
+    init_db()
+    def _op():
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            cur = conn.cursor()
+            # Simple increment
+            cur.execute("UPDATE users SET total_reps_all_time = total_reps_all_time + ? WHERE id = ?", (reps, user_id))
+            conn.commit()
+        finally:
+            conn.close()
+    _with_db_retry(_op)
+
 class WeeklyReportRequest(BaseModel):
     username: str
     token: str
@@ -441,6 +706,35 @@ async def get_weekly_report(req: WeeklyReportRequest):
             weekly_records.append({"timestamp": ts, "waist_cm": r[1]})
             
     # Calculate stats
+    # NEW: Fetch workout logs for daily activity
+    def _get_workouts():
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT timestamp, reps FROM workout_logs WHERE user_id = ? AND timestamp >= ?",
+                (user_id, seven_days_ago.isoformat())
+            )
+            return cur.fetchall()
+        finally:
+            conn.close()
+            
+    workout_rows = _with_db_retry(_get_workouts)
+    
+    # Aggregate by day for the last 7 days
+    daily_activity_map = { (now - timedelta(days=i)).date(): 0 for i in range(7) }
+    for r in workout_rows:
+        try:
+            ts = datetime.fromisoformat(r[0]).date()
+            if ts in daily_activity_map:
+                daily_activity_map[ts] += r[1]
+        except: continue
+        
+    # Sort by date
+    sorted_dates = sorted(daily_activity_map.keys())
+    daily_activity = [daily_activity_map[d] for d in sorted_dates]
+    activity_labels = [d.strftime("%a") for d in sorted_dates]
+
     total_scans = len(weekly_records)
     
     latest_waist = 0.0
@@ -463,7 +757,9 @@ async def get_weekly_report(req: WeeklyReportRequest):
         "avg_waist": round(avg_waist, 1),
         "latest_waist": round(latest_waist, 1),
         "start_waist": round(start_waist, 1),
-        "weekly_change": round(weekly_change, 1)
+        "weekly_change": round(weekly_change, 1),
+        "daily_activity": daily_activity,
+        "activity_labels": activity_labels
     }
 
 # Init DB - lazy initialization (only when needed)
@@ -689,6 +985,19 @@ async def upload_image(
         "message": warning_msg
     }
     
+    # Trigger Gamification if successful
+    if save_status == "success":
+        # Increment reps? Upload usually doesn't count "reps" unless analyzed.
+        # But it counts as "activity" for streak.
+        # Let's verify gamification updates streak.
+        game_res = check_gamification(user['id'])
+        if game_res:
+            response.update({
+                "streak_count": game_res['streak_count'],
+                "new_badges": game_res['new_badges'],
+                "badges_earned": game_res['badges_earned']
+            })
+    
     # Add new analysis features if available
     if body_analysis_result and body_analysis_result.get("landmarks_detected"):
         response.update({
@@ -743,6 +1052,52 @@ async def api_get_history(request: Request):
 
     return JSONResponse(get_history_for_user(user["id"]))
 
+class LogWorkoutRequest(BaseModel):
+    user_id: int # Or token
+    reps: int
+    workout_type: str
+
+@app.post("/api/log_workout")
+async def api_log_workout(req: dict = None, request: Request = None):
+    # Depending on how client sends it. Usually just check token.
+    user = await get_current_user(request)
+    if not user or user['username'] == 'anonymous':
+        raise HTTPException(status_code=401, detail="Authentication required")
+        
+    try:
+        data = await request.json()
+        reps = data.get("reps", 0)
+    except:
+        reps = 0
+        
+    # Update total reps
+    if reps > 0:
+        update_user_reps(user['id'], reps)
+        # NEW: Log individual session
+        def _log_op():
+            conn = sqlite3.connect(DB_PATH)
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    "INSERT INTO workout_logs (user_id, timestamp, reps, workout_type) VALUES (?, ?, ?, ?)",
+                    (user['id'], datetime.now().isoformat(), reps, data.get("workout_type", "squat"))
+                )
+                conn.commit()
+            finally:
+                conn.close()
+        _with_db_retry(_log_op)
+        
+    # Check gamification (streak, badges)
+    game_res = check_gamification(user['id'])
+    
+    return JSONResponse({
+        "status": "success",
+        "logged_reps": reps,
+        "streak_count": game_res['streak_count'] if game_res else 0,
+        "new_badges": game_res['new_badges'] if game_res else [],
+        "badges_earned": game_res['badges_earned'] if game_res else []
+    })
+
 @app.delete("/api/history/{item_id}")
 async def api_delete_history(item_id: int, request: Request):
     user = await get_current_user(request)
@@ -751,5 +1106,140 @@ async def api_delete_history(item_id: int, request: Request):
         raise HTTPException(status_code=404, detail="Item not found")
     return JSONResponse({"deleted": item_id})
 
+@app.get("/.well-known/appspecific/com.chrome.devtools.json")
+async def chrome_devtools_manifest():
+    return JSONResponse({})
+
+
+@app.get("/api/gamification")
+async def get_gamification_stats(request: Request):
+    """
+    Get gamification stats for the current user.
+    Also updates Login Streak.
+    """
+    user = await get_current_user(request)
+    if user['username'] == "anonymous":
+         # Return empty/default for anonymous
+         return JSONResponse({
+             "login_streak": 0,
+             "workout_streak": 0,
+             "weekly_consistency": 0,
+             "badges_earned": [],
+             "total_reps": 0
+         })
+         
+    user_id = user['id']
+    
+    # Update Login Streak just by fetching this
+    check_login_streak(user_id)
+    
+    # Fetch all stats
+    def _get_full_stats():
+        conn = sqlite3.connect(DB_PATH)
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT current_login_streak, current_workout_streak, weekly_consistency_score, 
+                       badges_earned, total_reps_all_time
+                FROM users WHERE id = ?
+            """, (user_id,))
+            return cur.fetchone()
+        finally:
+            conn.close()
+            
+    row = _with_db_retry(_get_full_stats)
+    if not row:
+        return JSONResponse({"error": "User data not found"}, status_code=404)
+        
+    login_streak = row[0] or 0
+    workout_streak = row[1] or 0
+    consistency = row[2] or 0
+    badges = json.loads(row[3]) if row[3] else []
+    total_reps = row[4] or 0
+    
+    return JSONResponse({
+        "login_streak": login_streak,
+        "workout_streak": workout_streak,
+        "weekly_consistency": consistency,
+        "badges_earned": badges,
+        "total_reps": total_reps
+    })
+
+@app.post("/api/reset_counter", dependencies=[Depends(get_current_user)])
+async def reset_counter_api(request: Request):
+    """
+    Resets the session counter or stats.
+    """
+    return JSONResponse(content={"status": "success", "message": "Counter reset signal received"})
+
+# --- Video Streaming Logic ---
+mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
+
+def gen_frames():
+    cap = cv2.VideoCapture(0)
+    
+    # Instantiate the analyzer OUTSIDE the while loop
+    squat_analyzer = AdvancedSquatAnalyzer() 
+    
+    with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
+        while True:
+            success, frame = cap.read()
+            if not success:
+                break
+
+            # ... existing MediaPipe processing ...
+            image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = pose.process(image)
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+            if results.pose_landmarks:
+                landmarks = results.pose_landmarks.landmark
+                
+                # PASS LANDMARKS TO ANALYZER
+                # This function draws the errors directly on the 'image'
+                try:
+                    image, current_feedback = squat_analyzer.analyze_frame(landmarks, image)
+                except Exception as e:
+                    print(f"Analyzer Error: {e}")
+                
+                # Draw standard landmarks (optional, if you still want the stick figure)
+                mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+
+                # --- Visual Feedback Box (Dynamic Positioning) ---
+                h, w, _ = image.shape
+                
+                # Draw Blue Rectangle at the bottom 15% (height 80px)
+                # Color: Blue (255, 0, 0) for BGR
+                cv2.rectangle(image, (0, h - 80), (w, h), (255, 0, 0), -1)
+                
+                # Text Settings
+                # Use current_feedback from analyzer, default to "Form Analysis Active" if empty
+                text = current_feedback if current_feedback else "Form Analysis Active"
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                font_scale = 1
+                thickness = 2
+                
+                # Calculate text size for centering
+                (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+                text_x = (w - text_width) // 2
+                text_y = h - 20 # Approx padding from bottom
+                
+                # Draw Text (White)
+                cv2.putText(image, text, (text_x, text_y), font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
+                # ---------------------------------------------
+
+            ret, buffer = cv2.imencode('.jpg', image)
+            frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+    
+    cap.release()
+
+@app.get("/video_feed")
+def video_feed():
+    return StreamingResponse(gen_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
+
 if __name__ == "__main__":
     uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
+

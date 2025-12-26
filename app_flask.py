@@ -394,6 +394,57 @@ def api_delete_history(item_id):
     return jsonify({"deleted": item_id}), 200
 
 
+@app.route('/api/weekly_report', methods=['POST'])
+@jwt_required()
+def api_weekly_report():
+    """Get weekly report endpoint - requires JWT"""
+    user_id = get_jwt_identity()
+    user = get_user_by_id(user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    # Get all measurements for this user
+    history = get_history_for_user(user_id)
+    
+    # Filter for last 7 days
+    now = datetime.utcnow()
+    seven_days_ago = now - timedelta(days=7)
+    
+    weekly_records = []
+    for record in history:
+        try:
+            ts = datetime.fromisoformat(record['timestamp'])
+            if ts >= seven_days_ago:
+                weekly_records.append(record)
+        except (ValueError, KeyError):
+            continue
+    
+    # Calculate stats
+    total_scans = len(weekly_records)
+    latest_waist = 0.0
+    start_waist = 0.0
+    avg_waist = 0.0
+    weekly_change = 0.0
+    
+    if total_scans > 0:
+        # Filter out None values for waist_cm calculation
+        valid_waists = [rec['waist_cm'] for rec in weekly_records if rec['waist_cm'] is not None]
+        
+        if valid_waists:
+            avg_waist = sum(valid_waists) / len(valid_waists)
+            latest_waist = valid_waists[-1]
+            start_waist = valid_waists[0]
+            weekly_change = latest_waist - start_waist
+    
+    return jsonify({
+        "total_scans": total_scans,
+        "avg_waist": round(avg_waist, 1),
+        "latest_waist": round(latest_waist, 1),
+        "start_waist": round(start_waist, 1),
+        "weekly_change": round(weekly_change, 1)
+    }), 200
+
+
 @app.route('/uploads/<filename>')
 @jwt_required()
 def uploaded_file(filename):

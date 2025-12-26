@@ -10,12 +10,49 @@ var canvasCtx = null;
 var repState = { state: "UP", count: 0, angleBuf: [], frameSinceTransition: 0 };
 var smoothing = 4;
 var minTimeFrames = 4;
-var recognition = null;
-var voiceEnabled = false;
+
+
+function animateValue(obj, start, end, duration) {
+  if (!obj) return;
+  let startTimestamp = null;
+  const step = (timestamp) => {
+    if (!startTimestamp) startTimestamp = timestamp;
+    const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+    obj.innerHTML = Math.floor(progress * (end - start) + start);
+    if (progress < 1) {
+      window.requestAnimationFrame(step);
+    } else {
+      obj.innerHTML = end; // Ensure final value is exact
+    }
+  };
+  window.requestAnimationFrame(step);
+}
+
+
+
+// Voice Toggle UI (Global)
+
 
 window.addEventListener('DOMContentLoaded', () => {
+  // --- Helper for robust modal retrieval ---
+  function safeGetModal(el, options = {}) {
+    if (!el) return null;
+    // Check if instance already exists
+    let check = bootstrap.Modal.getInstance(el);
+    if (check) return check;
+    // Create new instance
+    return new bootstrap.Modal(el, { backdrop: 'static', keyboard: true, ...options });
+  }
+
+  // Init Voice
+
+
+  // Voice Toggle UI
+
+
   // --- Elements / auth ---
   const usernameInput = document.getElementById('usernameInput');
+
   const createUserBtn = document.getElementById('createUserBtn');
   const apiToken = document.getElementById('apiToken');
   const copyTokenBtn = document.getElementById('copyTokenBtn');
@@ -45,7 +82,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const formFeedback = document.getElementById('form-feedback');
   const upAngleInput = document.getElementById('upAngle');
   const downAngleInput = document.getElementById('downAngle');
-  const voiceToggle = document.getElementById('voiceToggle');
+
 
   // History & modals elements
   const historyBody = document.getElementById('historyBody');
@@ -246,8 +283,16 @@ window.addEventListener('DOMContentLoaded', () => {
           if (uploadStatus) {
             uploadStatus.textContent = 'Warning: ' + (j.message || 'Data not saved.');
             uploadStatus.style.color = 'orange';
+            uploadStatus.textContent = 'Warning: ' + (j.message || 'Data not saved.');
+            uploadStatus.style.color = 'orange';
           }
         }
+
+        // Gamification Update
+        if (j.streak_count !== undefined) {
+          updateGamificationUI(j);
+        }
+
       } catch (err) {
         console.error('upload error', err);
         uploadStatus.textContent = 'Error: ' + (err.message || err);
@@ -365,6 +410,7 @@ window.addEventListener('DOMContentLoaded', () => {
       if (ang < 50) { formFeedback && (formFeedback.textContent = 'Good curl depth', formFeedback.style.color = 'green'); }
       else if (ang > 140) { formFeedback && (formFeedback.textContent = 'Extend arm', formFeedback.style.color = 'darkorange'); }
       else { formFeedback && (formFeedback.textContent = ''); }
+
     }
   }
 
@@ -441,7 +487,10 @@ window.addEventListener('DOMContentLoaded', () => {
     try {
       if (typeof Camera !== 'undefined') {
         camera = new Camera(videoElement, {
-          onFrame: async () => { try { ensureCanvasMatchesVideo(); await pose.send({ image: videoElement }); } catch (e) { console.error('pose.send error', e); } },
+          onFrame: async () => {
+            if (document.body.classList.contains('modal-open')) return;
+            try { ensureCanvasMatchesVideo(); await pose.send({ image: videoElement }); } catch (e) { console.error('pose.send error', e); }
+          },
           width: 640, height: 480
         });
         await camera.start();
@@ -453,7 +502,12 @@ window.addEventListener('DOMContentLoaded', () => {
         ensureCanvasMatchesVideo();
         let stopped = false;
         camera = { stop: () => { stopped = true; stream.getTracks().forEach(t => t.stop()); videoElement.pause(); videoElement.srcObject = null; } };
-        (async function frameLoop() { if (stopped) return; try { await pose.send({ image: videoElement }); } catch (e) { console.error('pose.send fallback', e); } requestAnimationFrame(frameLoop); })();
+        (async function frameLoop() {
+          if (stopped) return;
+          if (document.body.classList.contains('modal-open')) { requestAnimationFrame(frameLoop); return; }
+          try { await pose.send({ image: videoElement }); } catch (e) { console.error('pose.send fallback', e); }
+          requestAnimationFrame(frameLoop);
+        })();
         console.log('Camera started (getUserMedia fallback).');
       }
       startBtn && (startBtn.disabled = true);
@@ -478,9 +532,28 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function stopCamera() {
+  async function stopCamera() {
     try {
       if (!camera) return;
+
+      // Log workout if reps > 0
+      if (repState.count > 0) {
+        const token = getJWTToken();
+        if (token) {
+          // Non-blocking log
+          fetchWithToken('/api/log_workout', {
+            method: 'POST',
+            body: JSON.stringify({
+              reps: repState.count,
+              workout_type: 'squat' // Default or dynamic
+            })
+          }).then(r => r.json()).then(data => {
+            console.log('Workout logged:', data);
+            if (data.streak_count !== undefined) updateGamificationUI(data);
+          }).catch(e => console.error('Log workout failed', e));
+        }
+      }
+
       camera.stop && camera.stop();
       camera = null;
       canvasCtx && canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
@@ -497,7 +570,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // wire camera controls (existing IDs)
   startBtn && startBtn.addEventListener('click', () => startCamera());
   stopBtn && stopBtn.addEventListener('click', () => stopCamera());
-  resetBtn && resetBtn.addEventListener('click', () => resetCounter());
+
 
   // snapshot -> upload
   snapshotBtn && snapshotBtn.addEventListener('click', async () => { await doSnapshotUpload(); });
@@ -601,6 +674,11 @@ window.addEventListener('DOMContentLoaded', () => {
         img.src = `/uploads/${item.filename}`;
         img.style.width = '120px';
         img.style.borderRadius = '6px';
+        // Handle 404: Replace with placeholder
+        img.onerror = () => {
+          img.src = 'https://placehold.co/120x120?text=No+Image';
+          img.alt = 'Image not found';
+        };
         previewTd.appendChild(img);
       } else {
         previewTd.textContent = '—';
@@ -661,8 +739,10 @@ window.addEventListener('DOMContentLoaded', () => {
       return `<li style="margin-bottom:8px;"><strong>${name}</strong><br/><small style="color:#8deaff;">${target}</small><br/><small>${meta}</small></li>`;
     }).join('') : '<li>No workout data stored for this entry.</li>';
 
-    if (!workoutModalInstance) workoutModalInstance = new bootstrap.Modal(workoutModal);
-    workoutModalInstance.show();
+    if (!workoutModalInstance) workoutModalInstance = safeGetModal(workoutModal);
+    if (!workoutModal.classList.contains('show')) {
+      workoutModalInstance.show();
+    }
   }
 
   // Cleanup when modal is hidden (Bootstrap event)
@@ -688,8 +768,10 @@ window.addEventListener('DOMContentLoaded', () => {
     tutorialFrame.src = buildTutorialEmbed(exName);
     tutorialLink.href = buildTutorialUrl(exName);
 
-    if (!tutorialModalInstance) tutorialModalInstance = new bootstrap.Modal(tutorialModal);
-    tutorialModalInstance.show();
+    if (!tutorialModalInstance) tutorialModalInstance = safeGetModal(tutorialModal);
+    if (!tutorialModal.classList.contains('show')) {
+      tutorialModalInstance.show();
+    }
   }
   // Clear iframe when tutorial modal is hidden
   if (tutorialModal) {
@@ -729,44 +811,46 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   window.hideWorkoutSection = hideWorkoutSection;
 
-  // --- Voice control (unchanged behavior but safe) ---
-  function setupVoice() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) { alert('Web Speech API not supported in this browser. Use Chrome/Edge.'); return; }
-    recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    recognition.continuous = true;
 
-    recognition.onresult = (event) => {
-      const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
-      console.log('Voice heard:', transcript);
-      handleVoiceCommand(transcript);
-    };
-    recognition.onstart = () => { voiceEnabled = true; voiceToggle && voiceToggle.classList.add('active'); };
-    recognition.onend = () => { voiceEnabled = false; voiceToggle && voiceToggle.classList.remove('active'); };
-    recognition.onerror = (e) => { console.error('Voice error', e); alert('Voice error: ' + e.error); voiceToggle && voiceToggle.classList.remove('active'); voiceEnabled = false; };
-  }
 
-  function handleVoiceCommand(text) {
-    if (!text) return;
-    if (text.includes('start camera')) startCamera();
-    else if (text.includes('stop camera')) stopCamera();
-    else if (text.includes('take snapshot') || text.includes('snapshot') || text.includes('save snapshot')) doSnapshotUpload();
-    else if (text.includes('reset counter') || text.includes('reset reps')) { resetCounter(); formFeedback && (formFeedback.textContent = 'Rep counter reset', formFeedback.style.color = 'green'); setTimeout(() => formFeedback && (formFeedback.textContent = ''), 2000); }
-    else console.log('Unrecognized voice command:', text);
-  }
 
-  if (voiceToggle) {
-    voiceToggle.addEventListener('click', () => {
-      if (!recognition) setupVoice();
-      if (!recognition) return;
-      try {
-        if (!voiceEnabled) recognition.start();
-        else recognition.stop();
-      } catch (e) { console.warn('recognition start/stop error', e); }
-    });
+
+  // --- Gamification UI Helper ---
+  function updateGamificationUI(data) {
+    // 1. Update Streak
+    const streakBadge = document.getElementById('streakBadge');
+    const streakCount = document.getElementById('streakCount');
+    if (streakBadge && streakCount && data.streak_count !== undefined) {
+      streakCount.textContent = data.streak_count;
+      streakBadge.style.display = 'flex';
+      streakBadge.style.setProperty('display', 'flex', 'important');
+
+      // Animate if increased (simple check logic would be needed for "increased", 
+      // but for now just pulse on update)
+      streakBadge.classList.add('pulse-animation'); // Add CSS for this if desired
+    }
+
+    // 2. Update Badges
+    const earned = data.badges_earned || [];
+    const newBadges = data.new_badges || [];
+
+    // Show trophy case if any badges
+    const trophySection = document.getElementById('trophyCaseSection');
+    if (trophySection && earned.length > 0) {
+      trophySection.style.display = 'block';
+
+      earned.forEach(badge => {
+        const el = document.getElementById(`badge-${badge}`);
+        if (el) {
+          el.classList.remove('opacity-25');
+          el.classList.add('opacity-100');
+          if (newBadges.includes(badge)) {
+            el.style.transform = "scale(1.2)";
+            setTimeout(() => el.style.transform = "scale(1)", 1000);
+          }
+        }
+      });
+    }
   }
 
   // --- Small helpers: wire top/bottom buttons if present ---
@@ -780,15 +864,43 @@ window.addEventListener('DOMContentLoaded', () => {
   const weeklyReportBtn = document.getElementById('weeklyReportBtn');
   const weeklyReportModal = document.getElementById('weeklyReportModal');
   let weeklyReportModalInstance = null;
+  let weeklyReportLoading = false;
+  let modalShown = false;
+
+  // Initialize modal instance variable
+  // We do NOT initialize it here blindly. We do it just-in-time or check existence.
 
   if (weeklyReportBtn) {
-    weeklyReportBtn.addEventListener('click', async () => {
-      const usernameVal = (usernameInput?.value || '').trim();
-      if (!usernameVal) { alert('Please enter your Username first.'); return; }
-      const tokenVal = getJWTToken();
-      if (!tokenVal) { alert('Please generate or paste your Token first.'); return; }
+    weeklyReportBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
 
-      await loadWeeklyReport({ username: usernameVal, token: tokenVal });
+      // Prevent multiple simultaneous requests
+      if (weeklyReportLoading) {
+        console.log('Weekly report already loading, skipping...');
+        return;
+      }
+
+      const usernameVal = (usernameInput?.value || '').trim();
+      if (!usernameVal) {
+        alert('Please enter your Username first.');
+        return;
+      }
+
+      const tokenVal = getJWTToken();
+      if (!tokenVal) {
+        alert('Please generate or paste your Token first.');
+        return;
+      }
+
+      weeklyReportLoading = true;
+      console.log('Loading weekly report for:', usernameVal);
+
+      try {
+        await loadWeeklyReport({ username: usernameVal, token: tokenVal });
+      } finally {
+        weeklyReportLoading = false;
+      }
     });
   }
 
@@ -807,54 +919,251 @@ window.addEventListener('DOMContentLoaded', () => {
       }
 
       const data = await resp.json();
+      console.log('Weekly report data received:', data);
 
-      // Update UI
+      // Store data globally for deferred rendering
+      window.globalReportData = data;
+
+      // Update UI (stats)
       const totalScansEl = document.getElementById('wrTotalScans');
       const latestWaistEl = document.getElementById('wrLatestWaist');
       const changeEl = document.getElementById('wrWeeklyChange');
       const changeCard = document.getElementById('wrChangeCard');
 
-      if (totalScansEl) totalScansEl.textContent = data.total_scans;
-      if (latestWaistEl) latestWaistEl.textContent = data.latest_waist;
+      if (totalScansEl) totalScansEl.textContent = data.total_scans || 0;
+      if (latestWaistEl) latestWaistEl.textContent = data.latest_waist || 0;
 
-      const changeVal = data.weekly_change;
+      const changeVal = data.weekly_change || 0;
 
       if (changeEl) changeEl.textContent = (changeVal > 0 ? '+' : '') + changeVal;
 
-      // Color coding
+      // Speak Weekly Summary
+      if (window.speakText) {
+        const summary = `Here is your weekly report. You completed ${data.total_scans || 0} scans. Your latest waist measurement is ${data.latest_waist || 0} centimeters. Keep up the good work.`;
+        window.speakText(summary, true);
+      }
+
+      // Color coding elements
       if (changeCard && changeEl) {
         changeCard.className = 'card p-3 text-center h-100'; // reset
         const titleEl = changeCard.querySelector('h6');
 
         if (changeVal < 0) {
-          // Loss (Green)
           changeCard.classList.add('border-success', 'bg-success-subtle');
           if (titleEl) titleEl.className = 'text-success';
           changeEl.className = 'display-4 fw-bold text-success';
         } else if (changeVal > 0) {
-          // Gain (Warning/Red)
           changeCard.classList.add('border-danger', 'bg-danger-subtle');
           if (titleEl) titleEl.className = 'text-danger';
           changeEl.className = 'display-4 fw-bold text-danger';
         } else {
-          // No change
           if (titleEl) titleEl.className = 'text-muted';
           changeEl.className = 'display-4 fw-bold';
         }
       }
 
-      // Show Modal
-      if (!weeklyReportModalInstance && weeklyReportModal) {
-        weeklyReportModalInstance = new bootstrap.Modal(weeklyReportModal);
+      // Robust Modal Handling
+      if (weeklyReportModal) {
+        weeklyReportModalInstance = safeGetModal(weeklyReportModal, { focus: false });
+        // Only call show if not already shown
+        if (!weeklyReportModal.classList.contains('show')) {
+          weeklyReportModalInstance.show();
+        } else {
+          // If already shown, manually trigger chart render because 'shown.bs.modal' won't fire
+          renderWeeklyCharts(window.globalReportData);
+        }
       }
-      if (weeklyReportModalInstance) weeklyReportModalInstance.show();
 
     } catch (e) {
-      console.error('Weekly report error', e);
+      console.error('Weekly report error:', e);
       alert('Error loading report: ' + e.message);
     }
   }
 
+  // --- Chart Logic ---
+  let waistChartInstance = null;
+  let activityChartInstance = null;
+
+  function renderWeeklyCharts(data) {
+    if (!data || !window.Chart) return;
+
+    // 1. Waist Trend Chart
+    const ctxWaist = document.getElementById('waistChart');
+    if (ctxWaist) {
+      if (waistChartInstance) waistChartInstance.destroy();
+
+      waistChartInstance = new Chart(ctxWaist, {
+        type: 'line',
+        data: {
+          labels: data.dates || [],
+          datasets: [{
+            label: 'Waist (cm)',
+            data: data.waist_history || [],
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: { beginAtZero: false } // Waist isn't 0
+          }
+        }
+      });
+    }
+
+    // 2. Activity/Workouts Chart (Bar)
+    const ctxActivity = document.getElementById('activityChart');
+    if (ctxActivity) {
+      if (activityChartInstance) activityChartInstance.destroy();
+
+      activityChartInstance = new Chart(ctxActivity, {
+        type: 'bar',
+        data: {
+          labels: data.activity_labels || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+          datasets: [{
+            label: 'Workouts',
+            data: data.daily_activity || [0, 0, 0, 0, 0, 0, 0],
+            backgroundColor: '#10b981'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+          }
+        }
+      });
+    }
+  }
+
+  // Event Listener for Chart Rendering (Fixes "Invisible Chart" bug)
+  if (weeklyReportModal) {
+    weeklyReportModal.addEventListener('shown.bs.modal', () => {
+      if (window.globalReportData) {
+        renderWeeklyCharts(window.globalReportData);
+      }
+    });
+  }
+
   // --- End DOMContentLoaded listener ---
+
+  // Gamification Functions
+  function updateGamificationUI(data) {
+    if (!data) return;
+
+    const gamificationSection = document.getElementById('gamificationSection');
+    if (gamificationSection) gamificationSection.style.display = 'block';
+
+    // Update streaks
+    if (typeof data.login_streak !== 'undefined') {
+      const el = document.getElementById('loginStreakVal');
+      if (el) animateValue(el, 0, data.login_streak, 2000);
+    }
+    if (typeof data.workout_streak !== 'undefined') {
+      const el = document.getElementById('workoutStreakVal');
+      if (el) animateValue(el, 0, data.workout_streak, 2000);
+
+      // Navbar Streak Badge
+      const streakBadge = document.getElementById('streakBadge');
+      const streakCount = document.getElementById('streakCount');
+      if (streakBadge && streakCount) {
+        streakBadge.style.setProperty('display', 'flex', 'important');
+        animateValue(streakCount, 0, data.workout_streak, 2000);
+      }
+    } else if (typeof data.streak_count !== 'undefined') {
+      // Fallback legacy
+      const el = document.getElementById('workoutStreakVal');
+      if (el) animateValue(el, 0, data.streak_count, 2000);
+      const streakBadge = document.getElementById('streakBadge');
+      const streakCount = document.getElementById('streakCount');
+      if (streakBadge && streakCount) {
+        streakBadge.style.setProperty('display', 'flex', 'important');
+        animateValue(streakCount, 0, data.streak_count, 2000);
+      }
+    }
+
+    if (typeof data.weekly_consistency !== 'undefined') {
+      const el = document.getElementById('consistencyVal');
+      if (el) el.textContent = data.weekly_consistency + "/7";
+    } else if (typeof data.consistency_score !== 'undefined') {
+      const el = document.getElementById('consistencyVal');
+      if (el) el.textContent = data.consistency_score + "/7";
+    }
+
+    // Update Badges
+    if (data.badges_earned) {
+      data.badges_earned.forEach(badge => {
+        const el = document.getElementById('badge-' + badge);
+        if (el) {
+          el.classList.remove('opacity-25');
+          el.classList.add('opacity-100');
+          el.style.textShadow = "0 0 10px rgba(255, 215, 0, 0.8)";
+        }
+      });
+    }
+
+    // New Badges Alert
+    if (data.new_badges && data.new_badges.length > 0) {
+      // Debounce alert or just show log
+      console.log("New badges:", data.new_badges);
+    }
+  }
+
+  window.fetchGamificationStats = async function () {
+    try {
+      const resp = await fetchWithToken('/api/gamification');
+      if (resp.ok) {
+        const data = await resp.json();
+        updateGamificationUI(data);
+      }
+    } catch (e) {
+      console.error("Gamification fetch error", e);
+    }
+  };
+
+  // Allow global access explicitly
+  window.updateGamificationUI = updateGamificationUI;
+
+  // Initial call if token exists
+  if (getJWTToken()) {
+    window.fetchGamificationStats();
+  }
+
+  // Global Reset Function for Voice & Button
+
+  window.resetRepCounter = function () {
+    repState.count = 0;
+    repState.state = "UP";
+    repState.angleBuf = [];
+    if (repCountEl) repCountEl.textContent = "0";
+    if (repCountSideEl) repCountSideEl.textContent = "0";
+    if (formFeedback) {
+      formFeedback.textContent = "Counters Reset";
+      formFeedback.className = "badge-stage";
+    }
+
+    // Call Backend API
+    fetchWithToken('/api/reset_counter', { method: 'POST' })
+      .then(r => console.log('Backend counter reset:', r))
+      .catch(e => console.error('Backend reset failed', e));
+  };
+
+  if (resetBtn) {
+    // Remove old listeners by cloning or just overriding if possible (ignoring previous simple adds)
+    // For simplicity, we just add this one. It might double fire if not careful, 
+    // but the previous one was likely an anonymous arrow function.
+    // Ideally we replace the previous line.
+
+    // Let's rely on this new one being the primary one or just overwrite the onclick if needed for cleanliness
+    resetBtn.onclick = function () { window.resetRepCounter(); };
+  }
+
 }); // end DOMContentLoaded
+
 

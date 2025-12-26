@@ -1,20 +1,23 @@
 /* Cyberpunk Animated CSS — non-3D version */
 
 /* -------- CONFIG / VARIABLES -------- */
-:root{
-  --bg-dark-1: #10107f;    /* almost black */
-  --bg-dark-2: #121273;    /* deep graphite */
+:root {
+  --bg-dark-1: #10107f;
+  /* almost black */
+  --bg-dark-2: #121273;
+  /* deep graphite */
   --neon-cyan: #00f6ff;
   --neon-purple: #a64ff8;
   --muted-text: #95a5a6;
   --card-bg: rgba(74, 74, 210, 0.66);
-    /* If you want an ambient image, place a raster image (png/jpg/svg) inside `static/`
+  /* If you want an ambient image, place a raster image (png/jpg/svg) inside `static/`
       and set this to `url("/static/your-image.png")`. Using `file://` is blocked by browsers. */
-    --asset-url: none;
+  --asset-url: none;
 }
 
 /* -------- Base page + animated ambient background -------- */
-html, body {
+html,
+body {
   height: 100%;
   margin: 0;
   font-family: "Segoe UI", Roboto, Arial, sans-serif;
@@ -46,9 +49,20 @@ body::before {
 }
 
 @keyframes ambientShift {
-  0%   { transform: translate(0px,0px) scale(1); opacity:0.9; }
-  50%  { transform: translate(-8px,6px) scale(1.02); opacity:1; }
-  100% { transform: translate(0px,0px) scale(1); opacity:0.9; }
+  0% {
+    transform: translate(0px, 0px) scale(1);
+    opacity: 0.9;
+  }
+
+  50% {
+    transform: translate(-8px, 6px) scale(1.02);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate(0px, 0px) scale(1);
+    opacity: 0.9;
+  }
 }
 
 /* subtle sliding highlight */
@@ -57,17 +71,23 @@ body::after {
   position: fixed;
   inset: 0;
   z-index: -3;
-  background: linear-gradient(90deg, rgba(78, 51, 135, 0.002), rgba(255,255,255,0.0008));
+  background: linear-gradient(90deg, rgba(78, 51, 135, 0.002), rgba(255, 255, 255, 0.0008));
   pointer-events: none;
 }
 
 /* -------- Card base -------- */
 .card {
-  background: linear-gradient(180deg, rgba(160, 24, 24, 0.015), rgba(255,255,255,0.008));
-  border: 1px solid rgba(255,255,255,0.03);
+  background: linear-gradient(180deg, rgba(160, 24, 24, 0.015), rgba(255, 255, 255, 0.008));
+  border: 1px solid rgba(255, 255, 255, 0.03);
   border-radius: 12px;
   padding: 14px;
-  box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+  transition: all 0.3s ease-in-out;
+}
+
+.card:hover {
+  transform: scale(1.02);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
 }
 
 /* -------- Neon video border (breathing + color cycle) -------- */
@@ -75,15 +95,16 @@ body::after {
   position: relative;
   display: inline-block;
   border-radius: 14px;
-  padding: 6px;            /* room for glow */
-  background: rgba(255,255,255,0.01);
+  padding: 6px;
+  /* room for glow */
+  background: rgba(255, 255, 255, 0.01);
   transition: transform 180ms ease;
   overflow: visible;
 }
 
 /* video / canvas inside wrapper */
-.neon-video > video,
-.neon-video > canvas {
+.neon-video>video,
+.neon-video>canvas {
   display: block;
   width: 100%;
   height: auto;
@@ -117,29 +138,67 @@ body::after {
   inset: 6px;
   z-index: 4;
   border-radius: 10px;
-  background: linear-gradient(90deg, rgba(0,246,255,0.18), rgba(166,79,248,0.16));
+  background: linear-gradient(90deg, rgba(0, 246, 255, 0.18), rgba(166, 79, 248, 0.16));
   filter: blur(2px);
   pointer-events: none;
   animation: neonRimPulse 3.6s ease-in-out infinite;
 }
 
 @keyframes neonColorRotate {
-  0%   { transform: scale(1.02) rotate(0deg); }
-  50%  { transform: scale(1.03) rotate(180deg); }
-  100% { transform: scale(1.02) rotate(360deg); }
+  0% {
+    transform: scale(1.02) rotate(0deg);
+  }
+
+  50% {
+    transform: scale(1.03) rotate(180deg);
+  }
+
+  100% {
+    transform: scale(1.02) rotate(360deg);
+  }
 }
 
 @keyframes neonBreath {
-  0%   { opacity: 0.45; filter: blur(22px) saturate(1); transform: scale(1.01); }
-  40%  { opacity: 0.95; filter: blur(10px) saturate(1.6) contrast(1.02); transform: scale(1.03); }
-  70%  { opacity: 0.7; filter: blur(16px) saturate(1.2); transform: scale(1.02); }
-  100% { opacity: 0.45; filter: blur(22px) saturate(1); transform: scale(1.01); }
+  0% {
+    opacity: 0.45;
+    filter: blur(22px) saturate(1);
+    transform: scale(1.01);
+  }
+
+  40% {
+    opacity: 0.95;
+    filter: blur(10px) saturate(1.6) contrast(1.02);
+    transform: scale(1.03);
+  }
+
+  70% {
+    opacity: 0.7;
+    filter: blur(16px) saturate(1.2);
+    transform: scale(1.02);
+  }
+
+  100% {
+    opacity: 0.45;
+    filter: blur(22px) saturate(1);
+    transform: scale(1.01);
+  }
 }
 
 @keyframes neonRimPulse {
-  0% { opacity: 0.28; transform: scale(1); }
-  50% { opacity: 0.85; transform: scale(1.01); }
-  100% { opacity: 0.28; transform: scale(1); }
+  0% {
+    opacity: 0.28;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.85;
+    transform: scale(1.01);
+  }
+
+  100% {
+    opacity: 0.28;
+    transform: scale(1);
+  }
 }
 
 /* optional active class to briefly intensify the glow (use JS to toggle) */
@@ -150,7 +209,7 @@ body::after {
 
 /* -------- Metric cards (hover lift + shadow intensify) -------- */
 .metrics-row {
-  display:flex;
+  display: flex;
   gap: 14px;
   align-items: stretch;
   flex-wrap: wrap;
@@ -161,7 +220,7 @@ body::after {
   border-radius: 12px;
   padding: 16px;
   min-width: 150px;
-  transition: transform 260ms cubic-bezier(.2,.9,.3,1), box-shadow 260ms ease, border-color 260ms ease;
+  transition: transform 260ms cubic-bezier(.2, .9, .3, 1), box-shadow 260ms ease, border-color 260ms ease;
   box-shadow: 0 10px 30px rgba(155, 12, 12, 0.55);
   border: 1px solid rgba(49, 23, 101, 0.724);
   position: relative;
@@ -170,7 +229,7 @@ body::after {
 }
 
 /* neon accent vertical bar */
-.metric-card::before{
+.metric-card::before {
   content: "";
   position: absolute;
   left: 10px;
@@ -188,9 +247,10 @@ body::after {
 /* hover effects: lift and intensify shadow + neon rim */
 .metric-card:hover {
   transform: translateY(-10px) scale(1.02);
-  box-shadow: 0 26px 72px rgba(111, 12, 12, 0.75), 0 0 34px rgba(0,246,255,0.06);
-  border-color: rgba(0,246,255,0.12);
+  box-shadow: 0 26px 72px rgba(111, 12, 12, 0.75), 0 0 34px rgba(0, 246, 255, 0.06);
+  border-color: rgba(0, 246, 255, 0.12);
 }
+
 .metric-card:hover::before {
   transform: scaleY(1.06);
   opacity: 1;
@@ -203,6 +263,7 @@ body::after {
   color: #e6feff;
   letter-spacing: -0.5px;
 }
+
 .metric-label {
   font-size: 0.82rem;
   color: var(--muted-text);
@@ -217,22 +278,28 @@ body::after {
   top: 0;
   width: 30%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.03), transparent);
   transform: skewX(-18deg);
   pointer-events: none;
   animation: scan 6s linear infinite;
   mix-blend-mode: overlay;
   opacity: 0.5;
 }
+
 @keyframes scan {
-  0% { left: -40%; }
-  100% { left: 120%; }
+  0% {
+    left: -40%;
+  }
+
+  100% {
+    left: 120%;
+  }
 }
 
 /* -------- Utilities / responsive -------- */
 .btn-ghost {
   background: transparent;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   color: #bfefff;
   padding: 8px 12px;
   border-radius: 8px;
@@ -479,7 +546,7 @@ body::after {
   height: 320px;
   border-radius: 12px;
   margin: 16px 0;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 #tutorialModal {
@@ -515,18 +582,210 @@ body::after {
   border-bottom: none;
 }
 
+/* Modal Fix - Prevent Blinking */
+.modal.fade {
+  transition: opacity 0.3s linear;
+}
+
+.modal {
+  display: none !important;
+}
+
+.modal.show {
+  display: block !important;
+}
+
+.modal-backdrop.fade {
+  opacity: 0;
+  transition: opacity 0.3s linear;
+}
+
+.modal-backdrop.show {
+  opacity: 0.5;
+}
+
+/* Prevent modal flashing/blinking */
+.modal.fade.show {
+  display: block !important;
+  opacity: 1;
+}
+
+.modal-backdrop {
+  z-index: 1040 !important;
+}
+
+.modal {
+  z-index: 1050 !important;
+}
+
+#weeklyReportModal {
+  z-index: 9999;
+}
+
+#weeklyReportModal .modal-dialog {
+  transition: transform 0.3s ease-out;
+}
+
 @keyframes holoPulse {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 0.6; }
+
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
 }
 
 @keyframes holoScan {
-  0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
-  100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+  0% {
+    transform: translateX(-100%) translateY(-100%) rotate(45deg);
+  }
+
+  100% {
+    transform: translateX(100%) translateY(100%) rotate(45deg);
+  }
 }
 
 @media (max-width: 900px) {
-  .metrics-row { flex-direction: column; }
-  .neon-video { width: 100%; }
-  .holo-grid { grid-template-columns: 1fr; }
+  .metrics-row {
+    flex-direction: column;
+  }
+
+  .neon-video {
+    width: 100%;
+  }
+
+  .holo-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Pulse Animation */
+@keyframes pulse-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 246, 255, 0.4);
+    transform: scale(1);
+  }
+
+  70% {
+    box-shadow: 0 0 0 12px rgba(0, 246, 255, 0);
+    transform: scale(1.02);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 246, 255, 0);
+    transform: scale(1);
+  }
+}
+
+.pulse-active {
+  animation: pulse-glow 2s infinite;
+}
+
+/* Staggered Fade-In Animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in-1,
+.fade-in-2,
+.fade-in-3 {
+  opacity: 0;
+  /* Hidden initially */
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+
+.fade-in-1 {
+  animation-delay: 0.2s;
+}
+
+.fade-in-2 {
+  animation-delay: 0.4s;
+}
+
+.fade-in-3 {
+  animation-delay: 0.6s;
+}
+
+/* Button Hover Effects */
+.btn-hover-effect {
+  transition: all 0.2s ease-in-out;
+}
+
+.btn-hover-effect:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  filter: brightness(1.1);
+}
+
+.btn-hover-effect:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Weekly Report Cards */
+.report-card {
+  background: rgba(13, 18, 36, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(5px);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease;
+}
+
+.report-card:hover {
+  transform: translateY(-2px);
+}
+
+.report-card.highlight {
+  /* Vibrant Blue Gradient Glass */
+  background: linear-gradient(135deg, rgba(0, 198, 255, 0.85) 0%, rgba(0, 114, 255, 0.85) 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 8px 32px rgba(0, 114, 255, 0.35);
+}
+
+.report-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+  line-height: 1.4;
+  opacity: 0.9;
+}
+
+.report-value {
+  font-size: 3.5rem;
+  font-weight: 800;
+  line-height: 1;
+  margin: 8px 0 16px 0;
+}
+
+.report-card.highlight .report-label,
+.report-card.highlight .report-value {
+  color: #ffffff;
+  opacity: 1;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.report-card.highlight small {
+  color: rgba(255, 255, 255, 0.9) !important;
+  font-weight: 500;
 }
