@@ -1,0 +1,108 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Segoe UI", sans-serif;
+}
+
+/* High contrast text */
+body {
+    background: #000000;
+    /* Deep black background */
+    background-image: radial-gradient(circle at 50% 0%, #1a1a1a 0%, #000000 75%);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #e0e0e0;
+    /* Softer white for general text */
+}
+
+/* Container limits */
+.container {
+    width: 95%;
+    max-width: 1000px;
+    padding: 20px;
+}
+
+.title {
+    text-align: center;
+    margin-bottom: 30px;
+    font-size: 32px;
+    font-weight: 700;
+    color: #ffffff;
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 25px;
+    margin-bottom: 30px;
+}
+
+.stat-card {
+    padding: 30px;
+    border-radius: 20px;
+    /* Darker, more opaque background for better contrast */
+    background: rgba(30, 30, 30, 0.6);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.7);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.stat-card p {
+    font-size: 15px;
+    color: #a0a0a0;
+    /* Distinct grey for labels */
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 5px;
+}
+
+.stat-card h1 {
+    font-size: 48px;
+    font-weight: 800;
+    color: #ffffff;
+    margin-top: 5px;
+}
+
+/* Card Accents */
+.blue {
+    border-top: 4px solid #00c6ff;
+}
+
+.green {
+    border-top: 4px solid #00ff99;
+}
+
+.orange {
+    border-top: 4px solid #ff9f43;
+}
+
+/* Chart Container */
+.chart-card {
+    background: rgba(30, 30, 30, 0.6);
+    padding: 30px;
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    height: 400px;
+    /* Fixed height for visibility */
+    position: relative;
+    width: 100%;
+}
+
+canvas {
+    width: 100% !important;
+    height: 100% !important;
+}

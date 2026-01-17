@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Weekly Progress Report</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/weekly.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+    <div class="container">
+        <h2 class="title">Weekly Progress Report</h2>
+
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="stat-card blue">
+                <p>Workouts This Week</p>
+                <h1>2</h1>
+            </div>
+
+            <div class="stat-card green">
+                <p>Avg Waist Change</p>
+                <h1>−0.6 cm</h1>
+            </div>
+
+            <div class="stat-card orange">
+                <p>Workout Streak</p>
+                <h1>1 🔥</h1>
+            </div>
+        </div>
+
+        <!-- Chart -->
+        <div class="chart-card">
+            <canvas id="progressChart"></canvas>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/weekly.js') }}"></script>
+</body>
+
+</html>

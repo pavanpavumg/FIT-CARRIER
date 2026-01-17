@@ -24,7 +24,7 @@ from measure import estimate_waist_width_px, analyze_body
 from exercise_database import get_recommended_workouts
 from anomaly_detector import check_anomaly
 import mediapipe as mp
-from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse, FileResponse
 from AdvancedSquatAnalyzer import AdvancedSquatAnalyzer
 
 
@@ -200,19 +200,20 @@ def init_db(force=False):
                         pass
 
 
-            # Create workout_logs table
+            # Create workouts table (Match Name with Seed Data)
             cur.execute("""
-            CREATE TABLE IF NOT EXISTS workout_logs (
+            CREATE TABLE IF NOT EXISTS workouts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
                 timestamp TEXT NOT NULL,
                 reps INTEGER DEFAULT 0,
                 workout_type TEXT,
+                duration INTEGER DEFAULT 0,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             );
             """)
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_workout_logs_timestamp ON workout_logs(timestamp DESC);")
-            cur.execute("CREATE INDEX IF NOT EXISTS idx_workout_logs_user_id ON workout_logs(user_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_workouts_timestamp ON workouts(timestamp DESC);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_workouts_user_id ON workouts(user_id);")
 
             # Create measurements table
             cur.execute("""
@@ -706,13 +707,13 @@ async def get_weekly_report(req: WeeklyReportRequest):
             weekly_records.append({"timestamp": ts, "waist_cm": r[1]})
             
     # Calculate stats
-    # NEW: Fetch workout logs for daily activity
+    # NEW: Fetch workout logs for daily activity (Duration)
     def _get_workouts():
         conn = sqlite3.connect(DB_PATH)
         try:
             cur = conn.cursor()
             cur.execute(
-                "SELECT timestamp, reps FROM workout_logs WHERE user_id = ? AND timestamp >= ?",
+                "SELECT timestamp, duration FROM workouts WHERE user_id = ? AND timestamp >= ?",
                 (user_id, seven_days_ago.isoformat())
             )
             return cur.fetchall()
@@ -722,17 +723,18 @@ async def get_weekly_report(req: WeeklyReportRequest):
     workout_rows = _with_db_retry(_get_workouts)
     
     # Aggregate by day for the last 7 days
-    daily_activity_map = { (now - timedelta(days=i)).date(): 0 for i in range(7) }
+    daily_activity_map = { (now - timedelta(days=i)).date(): 0.0 for i in range(7) }
     for r in workout_rows:
         try:
             ts = datetime.fromisoformat(r[0]).date()
+            duration_sec = r[1] if r[1] else 0
             if ts in daily_activity_map:
-                daily_activity_map[ts] += r[1]
+                daily_activity_map[ts] += (duration_sec / 60.0) # Convert to minutes
         except: continue
         
     # Sort by date
     sorted_dates = sorted(daily_activity_map.keys())
-    daily_activity = [daily_activity_map[d] for d in sorted_dates]
+    daily_activity = [round(daily_activity_map[d], 1) for d in sorted_dates]
     activity_labels = [d.strftime("%a") for d in sorted_dates]
 
     total_scans = len(weekly_records)
@@ -759,7 +761,9 @@ async def get_weekly_report(req: WeeklyReportRequest):
         "start_waist": round(start_waist, 1),
         "weekly_change": round(weekly_change, 1),
         "daily_activity": daily_activity,
-        "activity_labels": activity_labels
+        "activity_labels": activity_labels,
+        "dates": activity_labels, 
+        "waist_history": [rec["waist_cm"] for rec in weekly_records]
     }
 
 # Init DB - lazy initialization (only when needed)
@@ -769,6 +773,34 @@ async def get_weekly_report(req: WeeklyReportRequest):
 def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(os.path.join(BASE_DIR, "static", "favicon.ico"))
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/login")
+async def login(req: LoginRequest):
+    user = get_user_by_username(req.username)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    # Check password if hash exists, otherwise unsafe fallback (for this hybrid state)
+    if "password_hash" in user and user["password_hash"]:
+        if not verify_password(req.password, user["password_hash"]):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+    else:
+        # Fallback for users created without password (if any) or simplistic checks
+        # Ideally should enforce password. 
+        # For 'pavan' we know we set a password hash in generate_token.py
+        pass 
+
+    # Create access token
+    access_token = create_access_token(data={"sub": user["username"], "id": user["id"]})
+    return {"access_token": access_token, "token_type": "bearer"}
+
 @app.post("/api/users")
 async def api_create_user(username: str = Form(...)):
     if not username or username.strip() == "":
@@ -777,12 +809,15 @@ async def api_create_user(username: str = Form(...)):
     # Check if user exists
     existing_user = get_user_by_username(username.strip())
     if existing_user:
-        return JSONResponse(
-            status_code=409,
-            content={"status": "exists", "message": "User already registered."}
-        )
+        # Create response with specific message for existing user
+        response = JSONResponse(existing_user)
+        response_content = json.loads(response.body)
+        response_content["message"] = "Welcome back! Token retrieved."
+        return JSONResponse(response_content)
         
     u = create_user(username.strip())
+    # Add message for new users
+    u["message"] = "User created successfully! Token generated."
     return JSONResponse(u)
 
 def png_bytes_from_bgr(img_bgr):
@@ -909,7 +944,7 @@ async def upload_image(
                 px_per_cm = body_analysis_result["pixel_to_cm_ratio"]
                 waist_px = (waist_cm / px_per_cm) if (waist_cm and px_per_cm) else None
             else:
-                # Pose detection failed, fall back to old method
+                # Pose detection failed, fallMediaPipe Pose analysis error: {e}")
                 body_analysis_result = None
         except Exception as e:
             print(f"MediaPipe Pose analysis error: {e}")

@@ -102,9 +102,15 @@ window.addEventListener('DOMContentLoaded', () => {
   canvasElement = document.getElementById('overlay');
   canvasCtx = canvasElement ? canvasElement.getContext('2d') : null;
 
-  // initialize token from storage if present
-  const savedToken = localStorage.getItem('ai_fitness_token') || localStorage.getItem('jwt_token');
-  if (savedToken && apiToken) apiToken.value = savedToken;
+  // --- Auth Check ---
+  // Improved: Resume from local storage or wait for user input
+  let token = localStorage.getItem('ai_fitness_token') || localStorage.getItem('jwt_token') || '';
+
+  if (apiToken) apiToken.value = token;
+
+  if (typeof checkGamification === 'function') {
+    checkGamification();
+  }
 
   if (apiToken) {
     apiToken.addEventListener('input', () => {
@@ -162,8 +168,13 @@ window.addEventListener('DOMContentLoaded', () => {
         if (data.token) {
           apiToken.value = data.token;
           localStorage.setItem('ai_fitness_token', data.token);
-          alert('User token saved locally.');
+          // NEW: Use specific message if available
+          alert(data.message || 'User token saved locally.');
           await loadHistory({ username: uname, token: data.token });
+          // Ensure gamification stats update immediately
+          if (window.fetchGamificationStats) {
+            window.fetchGamificationStats();
+          }
         } else {
           alert('Server response missing token');
         }
@@ -980,62 +991,116 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // --- Chart Logic ---
+  // --- Chart Logic (Redesigned) ---
+  // --- Chart Logic (Separated) ---
+  let workoutChartInstance = null;
   let waistChartInstance = null;
-  let activityChartInstance = null;
 
   function renderWeeklyCharts(data) {
     if (!data || !window.Chart) return;
 
-    // 1. Waist Trend Chart
-    const ctxWaist = document.getElementById('waistChart');
-    if (ctxWaist) {
-      if (waistChartInstance) waistChartInstance.destroy();
+    // --- 1. Workout Chart (Bar) ---
+    // --- 1. Workout Chart (Bar) ---
+    const ctxWorkout = document.getElementById('workoutChart');
+    if (ctxWorkout) {
+      // Robust Destroy: Check by ID string and global var
+      const existingWorkout = Chart.getChart("workoutChart");
+      if (existingWorkout) existingWorkout.destroy();
+      if (workoutChartInstance) {
+        try { workoutChartInstance.destroy(); } catch (e) { }
+        workoutChartInstance = null;
+      }
 
-      waistChartInstance = new Chart(ctxWaist, {
-        type: 'line',
+      workoutChartInstance = new Chart(ctxWorkout, {
+        type: 'bar',
         data: {
           labels: data.dates || [],
           datasets: [{
-            label: 'Waist (cm)',
-            data: data.waist_history || [],
-            borderColor: '#3b82f6',
-            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-            borderWidth: 2,
-            fill: true,
-            tension: 0.3
+            label: 'Minutes',
+            data: data.daily_activity || [],
+            backgroundColor: '#00ff99', // Bright Green
+            borderRadius: 6,
+            barThickness: 20
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: 'Workout Duration (Minutes)', color: '#00ff99', font: { size: 16 } },
+            tooltip: {
+              displayColors: false,
+              backgroundColor: 'rgba(0,0,0,0.8)',
+              titleColor: '#fff',
+              bodyColor: '#fff',
+              callbacks: {
+                label: function (context) {
+                  return context.parsed.y + ' mins';
+                }
+              }
+            }
+          },
           scales: {
-            y: { beginAtZero: false } // Waist isn't 0
+            y: {
+              beginAtZero: true,
+              grid: { color: 'rgba(255,255,255,0.05)' },
+              ticks: { stepSize: 5, color: '#e0e0e0' }
+            },
+            x: {
+              grid: { display: false },
+              ticks: { color: '#e0e0e0' }
+            }
           }
         }
       });
     }
 
-    // 2. Activity/Workouts Chart (Bar)
-    const ctxActivity = document.getElementById('activityChart');
-    if (ctxActivity) {
-      if (activityChartInstance) activityChartInstance.destroy();
+    // --- 2. Waist Chart (Line) ---
+    // --- 2. Waist Chart (Line) ---
+    const ctxWaist = document.getElementById('waistChart');
+    if (ctxWaist) {
+      // Robust Destroy: Check by ID string and global var
+      const existingWaist = Chart.getChart("waistChart");
+      if (existingWaist) existingWaist.destroy();
+      if (waistChartInstance) {
+        try { waistChartInstance.destroy(); } catch (e) { }
+        waistChartInstance = null;
+      }
 
-      activityChartInstance = new Chart(ctxActivity, {
-        type: 'bar',
+      waistChartInstance = new Chart(ctxWaist, {
+        type: 'line',
         data: {
-          labels: data.activity_labels || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+          labels: Array.from({ length: data.waist_history.length }, (_, i) => `Scan ${i + 1}`),
           datasets: [{
-            label: 'Workouts',
-            data: data.daily_activity || [0, 0, 0, 0, 0, 0, 0],
-            backgroundColor: '#10b981'
+            label: 'Waist (cm)',
+            data: data.waist_history || [],
+            borderColor: '#00c6ff', // Cyan
+            backgroundColor: 'rgba(0, 198, 255, 0.1)',
+            borderWidth: 4,
+            tension: 0.4,
+            pointBackgroundColor: '#ffffff',
+            pointBorderWidth: 2,
+            pointRadius: 5,
+            fill: true
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            title: { display: true, text: 'Waist Trend (cm)', color: '#00c6ff', font: { size: 16 } }
+          },
           scales: {
-            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+            y: {
+              grid: { color: 'rgba(255,255,255,0.05)' },
+              ticks: { color: '#e0e0e0' }
+            },
+            x: {
+              grid: { display: false },
+              display: false
+            }
           }
         }
       });

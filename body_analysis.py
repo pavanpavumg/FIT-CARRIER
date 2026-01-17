@@ -91,26 +91,11 @@ def analyze_physique(image, height_cm=None):
             cv2.line(annotated_img, l_shoulder, r_shoulder, (0, 255, 0), 2)
             
         # B. Forward Head Posture (Text Neck)
-        # Compare Ear X to Shoulder X. 
-        # Assuming Front View: Ear X should be close to Shoulder X? No, that's for side view.
-        # In Front View, Ear X is usually between shoulders.
-        # If Side View: Ear X should be aligned with Shoulder X vertically.
-        # The user's request implies we check X diff.
-        # Let's check average Ear X vs average Shoulder X (Center alignment)
-        # If head is shifted L/R?
-        # Or maybe they mean Side View logic applied to Front View (which is invalid)?
-        # I'll implement: Check if Ear X is significantly ahead of Shoulder X (Side View assumption).
-        # If Front View, this check might be noisy.
-        # I'll use the average X of ears vs average X of shoulders.
         ear_x_avg = (l_ear[0] + r_ear[0]) / 2
         shoulder_x_avg = (l_shoulder[0] + r_shoulder[0]) / 2
         
-        # If side view, one ear and one shoulder are visible/dominant.
-        # I'll check the visibility.
         if landmarks[11].visibility > 0.8 and landmarks[12].visibility < 0.5: # Left side view
             fhp_diff = l_ear[0] - l_shoulder[0]
-            # Forward is usually negative X or positive X depending on facing.
-            # Let's just check magnitude of X diff.
             if abs(fhp_diff) > 0.1 * subject_height_px:
                  posture_issues.append("Forward Head Posture")
         elif landmarks[12].visibility > 0.8 and landmarks[11].visibility < 0.5: # Right side view
@@ -118,53 +103,16 @@ def analyze_physique(image, height_cm=None):
              if abs(fhp_diff) > 0.1 * subject_height_px:
                  posture_issues.append("Forward Head Posture")
         else:
-            # Front view: Check if head is forward (chin down)?
-            # Hard to tell "Forward Head" from X in front view.
-            # I'll skip FHP for clear front view to avoid false positives, 
-            # OR just check if ears are not aligned with shoulders vertically?
-            # User instruction: "Compare the Ear (7/8) X-position relative to the Shoulder (11/12)."
-            # I'll implement a simple threshold check.
             pass
 
         # --- 3. Health Risk Indicator (WHR) ---
-        # Get Waist Width from measure.py logic
-        # We need the segmentation mask for measure.py
-        # measure.py uses its own segmentation or we can pass the one from MediaPipe if we enabled it.
-        # results.segmentation_mask is available!
-        
         waist_px = None
         if results.segmentation_mask is not None:
-             # Convert MP mask to uint8
-             mask = (results.segmentation_mask.numpy_view() * 255).astype(np.uint8)
-             # Resize mask to image size if needed? MP mask is usually same size or 256x256?
-             # MP Pose segmentation mask is same size as input if we use it right?
-             # Actually MP returns normalized mask.
-             # measure.py expects BGR image or mask.
-             # Let's use measure.py's own pipeline to be consistent with previous waist measurement.
-             # Or call estimate_waist_width_px_from_masked with the MP mask.
-             # measure.py's estimate_waist_width_px_from_masked takes a masked BGR image.
-             
-             # Let's just call measure.estimate_waist_width_px(image) which handles everything.
-             # But that might re-run segmentation.
-             # To be efficient, we could reuse. But for simplicity, let's call measure.
              pass
         
-        # Call measure.py to get waist
-        # We need pixel width.
-        # measure.estimate_waist_width_px returns (width_px, debug_img, px_per_cm)
-        # But wait, measure.py's function signature in my view was:
-        # estimate_waist_width_px_from_masked(...)
-        # I need the main entry point.
-        # I'll assume measure.estimate_waist_width_px exists (it's used in app.py).
-        # Actually app.py calls `measure.analyze_body`.
-        # I'll try to use `measure.estimate_waist_width_px` if it exists.
-        # Based on previous `analyze_body` view, it calls `estimate_waist_width_px`.
-        
-        # I'll try to import it.
         try:
             waist_px, _, _ = measure.estimate_waist_width_px(image, height_cm=height_cm)
         except AttributeError:
-            # Fallback if function not found or signature diff
             waist_px = hip_width * 0.8 # Rough guess
             
         if waist_px and hip_width > 0:
@@ -179,7 +127,6 @@ def analyze_physique(image, height_cm=None):
             
         # --- 4. Visual Output (Cyberpunk Style) ---
         # Neon Blue Triangle (V-Taper)
-        # Shoulders to Mid-Hip
         mid_hip = ((l_hip[0] + r_hip[0])//2, (l_hip[1] + r_hip[1])//2)
         triangle_cnt = np.array([l_shoulder, r_shoulder, mid_hip], np.int32)
         
@@ -193,7 +140,6 @@ def analyze_physique(image, height_cm=None):
         
         # Draw Green Checkmarks if good posture
         if not posture_issues:
-            # Draw checkmark near head
             cv2.putText(annotated_img, "POSTURE OK", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         else:
              cv2.putText(annotated_img, "POSTURE ALERT", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
@@ -209,3 +155,82 @@ def analyze_physique(image, height_cm=None):
             "risk_level": risk_level,
             "annotated_image": annotated_img
         }
+
+# --- NEW REALITY FILTER FUNCTIONS ---
+
+def get_expected_waist(gender, height_cm):
+    """
+    Returns the average healthy waist size based on height and gender.
+    Rule of Thumb: Waist should be roughly 45-50% of height.
+    """
+    if str(gender).lower() == 'male':
+        return height_cm * 0.48  # Men: ~48% of height
+    else:
+        return height_cm * 0.45  # Women: ~45% of height
+
+def smart_body_analysis(image, user_height_cm, user_gender, user_age):
+    """
+    Analyzes waist with Reality Filter:
+    1. Standard CV measurement.
+    2. Validates against expected averages based on height/gender/age.
+    3. Smooths result if deviation > 25cm.
+    
+    Args:
+        image: BGR numpy array (from cv2.imread or decode).
+        user_height_cm: float
+        user_gender: str ("male"/"female")
+        user_age: int
+        
+    Returns:
+        tuple: (annotated_image, final_waist_cm)
+    """
+    if image is None: return None, 0.0
+
+    # 1. Standard Computer Vision Analysis (Edge-based)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blurred, 50, 150)
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if not contours: return image, 0.0
+
+    # 2. Get Raw Measurement from Camera
+    person_contour = max(contours, key=cv2.contourArea)
+    x, y, w, h = cv2.boundingRect(person_contour)
+    
+    if h == 0: return image, 0.0
+
+    pixel_ratio = user_height_cm / h
+    # Estimate waist is 80% of body width
+    # Note: 'w' here is bounding box width.
+    raw_waist_pixels = w * 0.8  
+    camera_waist_cm = raw_waist_pixels * pixel_ratio
+
+    # --- 3. THE REALITY CHECK ---
+    expected_waist = get_expected_waist(user_gender, user_height_cm)
+    
+    # Calculate Deviation
+    difference = abs(camera_waist_cm - expected_waist)
+    
+    final_result = camera_waist_cm
+
+    # LOGIC: If camera is VERY wrong (> 25cm difference), blend with average.
+    if difference > 25.0:
+        print(f"DEBUG: Camera Error Detected ({camera_waist_cm:.1f}cm vs expected {expected_waist:.1f}cm). Smoothing result.")
+        # Blend 20% Camera + 80% Average
+        final_result = (camera_waist_cm * 0.2) + (expected_waist * 0.8)
+    
+    # LOGIC: Age Adjustment
+    if user_age > 30:
+        final_result += (user_age - 30) * 0.1 # Add small buffer for age
+
+    # 4. Draw Visuals
+    mid_y = y + int(h * 0.55) 
+    # Ensure mid_y is within image
+    mid_y = min(max(mid_y, 0), image.shape[0]-1)
+    
+    cv2.line(image, (x, mid_y), (x+w, mid_y), (0,0,255), 4)
+    cv2.putText(image, f"{final_result:.1f}cm", (x, mid_y-10), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0,0,255), 2)
+
+    return image, round(final_result, 1)

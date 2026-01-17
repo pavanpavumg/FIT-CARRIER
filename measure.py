@@ -86,6 +86,36 @@ def vertical_width_profile(contour, img_shape, x_min, x_max, y_min, y_max):
         profile.append((y, width, left, right))
     return profile, mask
 
+
+def calculate_real_waist(waist_width_px, person_contours, user_real_height_cm=175):
+    """
+    Calculates the real waist size by comparing pixel height to real height.
+    Default user_real_height_cm is 175cm (Average male height).
+    """
+    
+    # 1. Find the height of the person in the image (in pixels)
+    # cv2.boundingRect draws a box around the person and gives us (x, y, width, height)
+    x, y, w, person_height_px = cv2.boundingRect(person_contours)
+    
+    # --- DEBUG PRINTS ---
+    print(f"DEBUG: Person Height (pixels): {person_height_px}")
+    print(f"DEBUG: Waist Width (pixels): {waist_width_px}")
+    # --------------------
+
+    # Safety check to avoid division by zero
+    if person_height_px == 0:
+        return 0
+
+    # 2. Calculate the "Scale Factor" (Pixels to CM Ratio)
+    # Formula: "One pixel equals X centimeters"
+    pixel_ratio = user_real_height_cm / person_height_px
+    
+    # 3. Calculate Real Waist
+    real_waist_cm = waist_width_px * pixel_ratio
+    
+    print(f"DEBUG: Final Calculation (Waist CM): {real_waist_cm}")
+    return round(real_waist_cm, 1)
+
 def estimate_waist_width_px_from_masked(masked_img_bgr, torso_frac=(0.30, 0.60), debug_draw=True, height_cm=None, original_img=None):
     """
     Core estimator assuming a reasonably clean masked image (foreground on background).
@@ -118,8 +148,9 @@ def estimate_waist_width_px_from_masked(masked_img_bgr, torso_frac=(0.30, 0.60),
         waist_px = w
         cv2.line(debug, (x, y + int(0.45*h)), (x+w, y + int(0.45*h)), (255,0,0), 2)
         px_per_cm = None
-        if height_cm:
-            px_per_cm = h / height_cm if height_cm > 0 else None
+        if height_cm and height_cm > 0:
+            final_waist = calculate_real_waist(w, cnt, user_real_height_cm=height_cm)
+            px_per_cm = w / final_waist if final_waist > 0 else None
         return waist_px, debug, px_per_cm
     min_item = min(widths, key=lambda t: t[1])
     waist_row, waist_px, left_off, right_off = min_item
@@ -129,9 +160,10 @@ def estimate_waist_width_px_from_masked(masked_img_bgr, torso_frac=(0.30, 0.60),
     cv2.circle(debug, (left_x, waist_row), 4, (0,255,255), -1)
     cv2.circle(debug, (right_x, waist_row), 4, (0,255,255), -1)
     px_per_cm = None
-    if height_cm:
-        if height_cm > 0:
-            px_per_cm = h / height_cm
+    if height_cm and height_cm > 0:
+        # Use new dynamic scaling logic
+        final_waist = calculate_real_waist(waist_px, cnt, user_real_height_cm=height_cm)
+        px_per_cm = waist_px / final_waist if final_waist > 0 else None
     return int(waist_px), debug, px_per_cm
 
 def estimate_waist_width_px(img_bgr, use_segmentation=False, torso_frac=(0.30, 0.60), debug_draw=True, height_cm=None):

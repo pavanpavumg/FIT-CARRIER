@@ -8,7 +8,18 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link href="{{ url_for('static', path='style.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', path='style.css') }}?v=2" rel="stylesheet">
+
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="{{ url_for('static', path='js/web_speech.js') }}"></script>
+  <script src="{{ url_for('static', path='main_jwt.js') }}?v=4"></script>
   <style>
     :root {
       --primary-color: #0d6efd;
@@ -658,45 +669,34 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
               </div>
               <div class="modal-body">
-                <div class="row g-3">
-                  <div class="col-4">
-                    <div class="report-card highlight">
-                      <div class="report-label">Workouts<br>this Week</div>
-                      <div class="report-value" id="wrTotalScans">0</div>
-                      <small>Total Scans</small>
-                    </div>
+                <!-- Stat Cards -->
+                <div class="stats-grid">
+                  <div class="stat-card blue">
+                    <p>Workouts This Week</p>
+                    <h1 id="wrTotalScans">0</h1>
                   </div>
-                  <div class="col-4">
-                    <div class="report-card">
-                      <div class="report-label text-muted">Current<br>Waist</div>
-                      <div class="report-value text-white" id="wrLatestWaist">0</div>
-                      <small class="text-muted">cm</small>
-                    </div>
+
+                  <div class="stat-card green">
+                    <p>Latest Waist (cm)</p>
+                    <h1 id="wrLatestWaist">0</h1>
                   </div>
-                  <div class="col-4">
-                    <div class="report-card" id="wrChangeCard">
-                      <div class="report-label text-muted">Weekly<br>Change</div>
-                      <div class="report-value text-white" id="wrWeeklyChange">0</div>
-                      <small class="text-muted">cm</small>
-                    </div>
+
+                  <div class="stat-card orange">
+                    <p>Weekly Change</p>
+                    <h1 id="wrWeeklyChange">0</h1>
                   </div>
                 </div>
-                <div class="row mt-4">
-                  <div class="col-md-6 mb-3">
-                    <h6 class="text-center text-muted">Waist Trend (7 Days)</h6>
-                    <div style="height: 250px; width: 100%; position: relative;">
-                      <canvas id="waistChart"></canvas>
-                    </div>
-                  </div>
-                  <div class="col-md-6 mb-3">
-                    <h6 class="text-center text-muted">Activity Intensity</h6>
-                    <div style="height: 250px; width: 100%; position: relative;">
-                      <canvas id="activityChart"></canvas>
-                    </div>
-                  </div>
+
+                <!-- SEPARATE CHARTS -->
+
+                <!-- 1. Workouts Chart (Green) -->
+                <div class="chart-card mb-4" style="height: 250px; min-height: 250px;">
+                  <canvas id="workoutChart"></canvas>
                 </div>
-                <div class="mt-4 text-center text-muted">
-                  <small>Based on your activity from the last 7 days.</small>
+
+                <!-- 2. Waist Graph (Blue) -->
+                <div class="chart-card" style="height: 250px; min-height: 250px;">
+                  <canvas id="waistChart"></canvas>
                 </div>
               </div>
             </div>

@@ -8,12 +8,13 @@
  */
 
 // 1. Check Browser Support
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+// 1. Check Browser Support
+var SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition;
 let isVoiceActive = false;
 
-if (SpeechRecognition) {
-    recognition = new SpeechRecognition();
+if (SpeechRecognitionClass) {
+    recognition = new SpeechRecognitionClass();
     recognition.continuous = false; // We want single commands; auto-restart manually for stability
     recognition.lang = 'en-US';
     recognition.interimResults = false;

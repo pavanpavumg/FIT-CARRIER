@@ -732,60 +732,123 @@ body::after {
   transform: translateY(0);
 }
 
-/* Weekly Report Cards */
-.report-card {
-  background: rgba(13, 18, 36, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  padding: 24px 16px;
+/* Weekly Report Cards - Redesigned High Contrast */
+#weeklyReportModal .modal-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 20px 30px;
+}
+
+#weeklyReportModal .modal-title {
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+}
+
+#weeklyReportModal .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+#weeklyReportModal .modal-body {
+  padding: 30px;
+}
+
+#weeklyReportModal .stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+#weeklyReportModal .stat-card {
+  padding: 25px;
+  border-radius: 20px;
+  background: #ffffff !important;
+  /* Force White background */
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  height: 100%;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(5px);
-  position: relative;
-  overflow: hidden;
-  transition: transform 0.2s ease;
+  align-items: flex-start;
+  min-height: 140px;
 }
 
-.report-card:hover {
-  transform: translateY(-2px);
+#weeklyReportModal .stat-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5);
 }
 
-.report-card.highlight {
-  /* Vibrant Blue Gradient Glass */
-  background: linear-gradient(135deg, rgba(0, 198, 255, 0.85) 0%, rgba(0, 114, 255, 0.85) 100%);
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  box-shadow: 0 8px 32px rgba(0, 114, 255, 0.35);
-}
-
-.report-label {
-  font-size: 0.75rem;
+#weeklyReportModal .stat-card p {
+  font-size: 14px;
+  color: #505050 !important;
+  /* Dark Grey text */
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
-  margin-bottom: 12px;
-  line-height: 1.4;
-  opacity: 0.9;
+  margin-bottom: 5px;
+  z-index: 2;
 }
 
-.report-value {
-  font-size: 3.5rem;
+#weeklyReportModal .stat-card h1 {
+  font-size: 40px;
   font-weight: 800;
-  line-height: 1;
-  margin: 8px 0 16px 0;
+  color: #000000 !important;
+  /* Force Black text */
+  margin: 0;
+  line-height: 1.1;
+  z-index: 2;
+  text-shadow: none;
 }
 
-.report-card.highlight .report-label,
-.report-card.highlight .report-value {
-  color: #ffffff;
-  opacity: 1;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+/* Card Accents */
+#weeklyReportModal .stat-card.blue {
+  border-left: 4px solid #00c6ff;
+  border-top: none;
 }
 
-.report-card.highlight small {
-  color: rgba(255, 255, 255, 0.9) !important;
-  font-weight: 500;
+#weeklyReportModal .stat-card.green {
+  border-left: 4px solid #00ff99;
+  border-top: none;
+}
+
+#weeklyReportModal .stat-card.orange {
+  border-left: 4px solid #ff9100;
+  border-top: none;
+}
+
+#weeklyReportModal .chart-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 1rem;
+  position: relative;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  /* Kept original shadow */
+  height: 400px;
+  min-height: 400px;
+  /* Enforce height */
+  width: 100%;
+  margin-top: 20px;
+  display: flex;
+  /* Ensure canvas expands */
+  align-items: center;
+  justify-content: center;
+}
+
+#weeklyReportModal canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+/* Override Modal Content */
+#weeklyReportModal .modal-content {
+  background: #000000;
+  background-image: radial-gradient(circle at 50% 0%, #1a1a1a 0%, #000000 75%);
+  color: #e0e0e0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 50px rgba(0, 0, 0, 0.8);
 }
